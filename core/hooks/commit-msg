@@ -1,0 +1,37 @@
+#!/bin/sh
+# Checks a commit message: Conventional Commits (`type(scope): subject`), a subject of at most 100
+# characters (aim for 72) with no full stop, and no AI attribution.
+# Copy it into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
+# Keep TYPES the same as the list in CONTRIBUTING.md.
+
+TYPES='feat|fix|test|refactor|docs|style|build|ci|chore|perf'
+
+# Below the scissors line that `git commit -v` adds is the diff, not the message.
+msg="$(sed '/^# -* >8 -*$/,$d' "$1")"
+subject="$(printf '%s\n' "$msg" | git stripspace --strip-comments | head -n 1)"
+fail=0
+refuse() {
+    echo "commit-msg: $1" >&2
+    fail=1
+}
+
+if [ -z "$subject" ]; then
+    refuse "the message is empty"
+elif ! printf '%s\n' "$subject" | grep -Eq '^(Merge |Revert "|(fixup|squash|amend)! )'; then
+    printf '%s\n' "$subject" | grep -Eq "^($TYPES)(\([a-z0-9-]+\))?!?: [^ ]" ||
+        refuse "the subject isn't \"type(scope): subject\" with one of: $(echo "$TYPES" | tr '|' ' ')"
+    case "$subject" in *.) refuse "the subject ends with a full stop" ;; esac
+    length=${#subject}
+    if [ "$length" -gt 100 ]; then
+        refuse "the subject has $length characters; at most 100, aiming for 72"
+    elif [ "$length" -gt 72 ]; then
+        echo "commit-msg: the subject has $length characters; aim for 72" >&2
+    fi
+fi
+
+# Every line, comments included: with -m, git keeps lines that start with #.
+printf '%s\n' "$msg" | grep -Eiq '^co-authored-by:.*(claude|copilot|gpt|gemini|openai|anthropic)' &&
+    refuse "a Co-Authored-By line names an AI; commits carry no AI attribution"
+printf '%s\n' "$msg" | grep -iq 'generated with' &&
+    refuse "no \"Generated with\" lines; commits carry no AI attribution"
+exit $fail
