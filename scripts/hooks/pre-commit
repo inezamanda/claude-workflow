@@ -1,0 +1,6 @@
+#!/bin/sh
+# Refuses staged file names and added lines that contain a word from the local scrub list.
+{
+    git diff --cached --name-only
+    git diff --cached -U0 --no-color | grep '^+'
+} | "$(git rev-parse --show-toplevel)/scripts/scrub.sh" "the staged changes"

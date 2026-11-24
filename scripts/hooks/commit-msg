@@ -1,0 +1,5 @@
+#!/bin/sh
+# Refuses a commit message that contains a word from the local scrub list.
+# Every line is read, comments included: with -m, git keeps lines that start with #. Only the diff
+# below the scissors line that `git commit -v` adds is left out, and the pre-commit hook checks that.
+sed '/^# -* >8 -*$/,$d' "$1" | "$(git rev-parse --show-toplevel)/scripts/scrub.sh" "the commit message"
