@@ -16,40 +16,58 @@ core/                              for any project
 apple/                             for Swift and SwiftUI apps, on top of core/
   CLAUDE.md                        a code-smell table for Swift
   CODING.md                        a coding guide (a template)
-scripts/                           this repository's own hooks and their tests
+install.sh                         sets up a machine, and copies the templates into a project
+scripts/                           this repository's own hooks, and the tests
 ```
 
 Files marked as templates have `<placeholders>` and `<!-- notes -->` to fill in or delete.
 
 ## How to use it
 
-**Every session.** Copy `core/CLAUDE.md` to `~/.claude/CLAUDE.md`. Claude Code loads it in every project, and a project's own `CLAUDE.md` wins where the two differ.
+**Once per machine**, a Mac or a Linux VM:
 
-**Every Apple project.** Copy `apple/CLAUDE.md` into the folder that holds those projects, such as `~/Developer/iOS/CLAUDE.md`. Claude Code also loads the `CLAUDE.md` files of the folders above the project it opens, so it reaches each project in that folder and none outside it.
+```sh
+git clone https://github.com/inezamanda/claude-workflow.git ~/.claude-workflow
+~/.claude-workflow/install.sh
+```
 
-**A new project.** Copy what fits and fill in the placeholders:
+Or without cloning first, which clones to `~/.claude-workflow` for you:
 
-| From | To |
+```sh
+curl -fsSL https://raw.githubusercontent.com/inezamanda/claude-workflow/main/install.sh | sh
+```
+
+It links `~/.claude/CLAUDE.md` to `core/CLAUDE.md` (moving an old one to a dated backup), puts a `claude-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
+
+**In a new project**, at the root of its repository:
+
+```sh
+claude-workflow project            # any project
+claude-workflow project --apple    # a Swift or SwiftUI app
+```
+
+| Command | Adds |
 | --- | --- |
-| `core/principles.md` | `docs/CLAUDE.md`, imported from the root `CLAUDE.md` with `@docs/CLAUDE.md` |
-| `core/CONTRIBUTING.md`, `apple/CODING.md` | the root, both imported from `CLAUDE.md` too |
-| `core/agents/code-reviewer.md` | `.claude/agents/` |
-| `core/github/review.yml` | `.github/workflows/` (it needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, from `claude setup-token`) |
-| `core/github/pull_request_template.md` | `.github/` |
-| `core/hooks/commit-msg` | `scripts/hooks/`, then `git config core.hooksPath scripts/hooks` |
+| `project` | `docs/CLAUDE.md` (the principles), `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, and a root `CLAUDE.md` that imports them; it also sets `core.hooksPath` |
+| `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, and the swift-lsp plugin |
+
+It never overwrites a file that's already there. If the project has a `CLAUDE.md` of its own, it prints the import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
 
 `principles.md` describes two levels: **full**, for projects that hold people's data, money or credentials, and **light**, for everything else. Pick one in each plan.
 
-## The plugins it assumes
+## The plugins it installs
 
-`core/CLAUDE.md` sets how these work together. Each is someone else's project; install it as its README says.
+`core/CLAUDE.md` sets how these work together. Each is someone else's project.
 
 - [superpowers](https://github.com/obra/superpowers): skills for brainstorming, planning, debugging and verifying.
 - [caveman](https://github.com/JuliusBrussee/caveman): terse replies in routine chat.
 - [ponytail](https://github.com/DietrichGebert/ponytail): the smallest change that solves the task.
-- [graphify](https://github.com/Graphify-Labs/graphify): a code graph to ask before searching files.
+- [graphify](https://github.com/Graphify-Labs/graphify): a code graph to ask before searching files. It needs [uv](https://docs.astral.sh/uv/); without it, the script skips graphify and says so.
+- swift-lsp, with `--apple` only: Swift code navigation for Claude (definitions, references, types), from Xcode's `sourcekit-lsp`.
 
-Without them, the principles and templates still work; drop the plugin section from `core/CLAUDE.md`.
+Optional, not installed: [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian), if you keep project notes in an Obsidian vault.
+
+Without the plugins, the principles and templates still work; drop the plugin section from `core/CLAUDE.md`.
 
 ## This repository's own hooks
 
@@ -57,8 +75,8 @@ Without them, the principles and templates still work; drop the plugin section f
 git config core.hooksPath scripts/hooks
 ```
 
-They refuse a commit whose changes or message contain a word from `.git/info/scrub-words`, one word or phrase per line. The list lives inside `.git`, so it's never committed, and the hooks refuse every commit until it exists. `scripts/test-hooks.sh` tests these hooks and `core/hooks/commit-msg`.
+They refuse a commit whose changes or message contain a word from `.git/info/scrub-words`, one word or phrase per line. The list lives inside `.git`, so it's never committed, and the hooks refuse every commit until it exists. `scripts/test-hooks.sh` tests these hooks and `core/hooks/commit-msg`, and `scripts/test-install.sh` tests `install.sh`.
 
 ## Updating
 
-Edit the files here, then copy `core/CLAUDE.md` to `~/.claude/CLAUDE.md` again. A copy, not a link, so a change reaches every session only when it's meant to.
+Run `claude-workflow`. It pulls the clone, which `~/.claude/CLAUDE.md` links to, and installs any plugin that's new. Whatever the clone has checked out is live: an edit, or another branch, reaches every session at once. For a bigger change, work in a separate `git worktree` and merge it when it's done.
