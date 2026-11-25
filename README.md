@@ -12,7 +12,7 @@ core/                              for any project
   agents/code-reviewer.md          a read-only reviewer for a whole branch
   github/review.yml                a Claude review of each pull request
   github/pull_request_template.md
-  hooks/commit-msg                 Conventional Commits, no AI attribution
+  hooks/commit-msg                 Conventional Commits, AI credit allowed or refused
 apple/                             for Swift and SwiftUI apps, on top of core/
   CLAUDE.md                        a code-smell table for Swift
   CODING.md                        a coding guide (a template)

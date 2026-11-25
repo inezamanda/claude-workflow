@@ -12,7 +12,7 @@ git config core.hooksPath scripts/hooks
 
 Before every commit, the hooks refuse:
 
-- a message that isn't `type(scope): subject`, runs past 100 characters, or credits an AI;
+- a message that isn't `type(scope): subject`, runs past 100 characters, or credits an AI where the project doesn't allow it;
 - <!-- each check the project's hooks add, one line each -->
 
 Never skip them with `--no-verify`; if one is wrong, fix the check.
@@ -35,6 +35,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 - **Scopes:** <!-- one per part of the project, with what it covers -->. Leave the scope out when a change spans several.
 - **Subject:** imperative and lowercase, no full stop. Aim for 72 characters; the hook warns past that and refuses past 100.
 - **Body:** say why, when it isn't obvious. Break lines only where you mean a break, like a new paragraph or a separate point. Don't break inside a sentence to keep lines short: GitHub keeps those breaks, and the text turns choppy.
+- **AI credit:** <!-- Say whether commits credit the agent. If they don't, set ALLOW_AI_CREDIT=0 in scripts/hooks/commit-msg. -->
 - **Breaking changes** get a `!` after the type and a `BREAKING CHANGE:` footer. <!-- Name what counts here: a stored format, a public API, a settings key. -->
 
 Keep moves and reformatting in their own commits, separate from changes in behaviour, so each diff is easy to review.

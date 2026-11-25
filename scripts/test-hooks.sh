@@ -28,10 +28,17 @@ message 'feature: keep the draft\n';                    expect refuse "unknown t
 message 'fix: keep the draft.\n';                       expect refuse "full stop" "$hook" "$work/msg"
 message "fix: $(printf '%0101d' 0 | tr 0 a)\n";         expect refuse "subject over 100 characters" "$hook" "$work/msg"
 message "fix: $(printf '%080d' 0 | tr 0 a)\n";          expect pass   "subject over 72 only warns" "$hook" "$work/msg"
-message 'fix: x\n\nCo-Authored-By: Claude <a@b.c>\n';   expect refuse "AI co-author" "$hook" "$work/msg"
+message 'fix: x\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n'; expect pass "AI co-author, allowed by default" "$hook" "$work/msg"
 message 'fix: x\n\nCo-Authored-By: Sam <a@b.c>\n';      expect pass   "human co-author" "$hook" "$work/msg"
-message 'fix: x\n\n# Generated with a tool\n';          expect refuse "tool credit in a # line" "$hook" "$work/msg"
 message '\n# only comments\n';                          expect refuse "empty message" "$hook" "$work/msg"
+
+# The same hook with AI credit refused
+sed 's/^ALLOW_AI_CREDIT=1$/ALLOW_AI_CREDIT=0/' "$hook" > "$work/commit-msg-refused" && chmod +x "$work/commit-msg-refused"
+refused="$work/commit-msg-refused"
+grep -q '^ALLOW_AI_CREDIT=0$' "$refused" || { echo "FAIL  could not switch AI credit off"; exit 1; }
+message 'fix: x\n\nCo-Authored-By: Claude <a@b.c>\n';   expect refuse "refused: AI co-author" "$refused" "$work/msg"
+message 'fix: x\n\n# Generated with a tool\n';          expect refuse "refused: tool credit in a # line" "$refused" "$work/msg"
+message 'fix: x\n\nCo-Authored-By: Sam <a@b.c>\n';      expect pass   "refused: human co-author still passes" "$refused" "$work/msg"
 
 # scripts/hooks (the scrub check), in a throwaway repository with its own word list
 repo="$work/repo"

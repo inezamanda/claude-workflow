@@ -102,7 +102,7 @@ The agent writes the code; the maintainer understands and approves each step, an
 - One branch per piece of work, never commits on `main`, messages in [Conventional Commits](https://www.conventionalcommits.org) form.
 - In a commit or pull request body, break lines only where a break is meant, never inside a sentence: GitHub keeps those breaks.
 - Edit a pull request description only from its current copy on GitHub (`gh pr view <n> --json body`), never from a local draft: review bots write into it, and a replaced body loses their part.
-- No AI attribution in commits or pull requests: no co-author trailer and no "generated with" line.
+- **Decide per project whether commits and pull requests credit the agent**, and write it in CONTRIBUTING.md. Where they do, use only the line the agent's tool writes (for Claude Code, a `Co-Authored-By:` trailer with the model's name and a noreply address): no session links, prompts or personal details.
 
 ### 10. Write like a person
 

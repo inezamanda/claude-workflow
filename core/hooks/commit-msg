@@ -1,10 +1,12 @@
 #!/bin/sh
 # Checks a commit message: Conventional Commits (`type(scope): subject`), a subject of at most 100
-# characters (aim for 72) with no full stop, and no AI attribution.
+# characters (aim for 72) with no full stop, and, where ALLOW_AI_CREDIT is 0, no AI attribution.
 # Copy it into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
 # Keep TYPES the same as the list in CONTRIBUTING.md.
 
 TYPES='feat|fix|test|refactor|docs|style|build|ci|chore|perf'
+# 0 refuses a message that credits an AI (a Co-Authored-By trailer or a "Generated with" line). Match CONTRIBUTING.md.
+ALLOW_AI_CREDIT=1
 
 # Below the scissors line that `git commit -v` adds is the diff, not the message.
 msg="$(sed '/^# -* >8 -*$/,$d' "$1")"
@@ -30,8 +32,10 @@ elif ! printf '%s\n' "$subject" | grep -Eq '^(Merge |Revert "|(fixup|squash|amen
 fi
 
 # Every line, comments included: with -m, git keeps lines that start with #.
-printf '%s\n' "$msg" | grep -Eiq '^co-authored-by:.*(claude|copilot|gpt|gemini|openai|anthropic)' &&
-    refuse "a Co-Authored-By line names an AI; commits carry no AI attribution"
-printf '%s\n' "$msg" | grep -iq 'generated with' &&
-    refuse "no \"Generated with\" lines; commits carry no AI attribution"
+if [ "$ALLOW_AI_CREDIT" = 0 ]; then
+    printf '%s\n' "$msg" | grep -Eiq '^co-authored-by:.*(claude|copilot|gpt|gemini|openai|anthropic)' &&
+        refuse "a Co-Authored-By line names an AI; this project's commits carry no AI attribution"
+    printf '%s\n' "$msg" | grep -iq 'generated with' &&
+        refuse "no \"Generated with\" lines; this project's commits carry no AI attribution"
+fi
 exit $fail
