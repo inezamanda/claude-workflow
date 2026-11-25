@@ -4,7 +4,8 @@
 # Usage: scripts/test-install.sh (from anywhere in the repository)
 
 root="$(git rev-parse --show-toplevel)" || exit 1
-mkdir -p "$root/build" && work="$(mktemp -d "$root/build/test-install.XXXXXX")" || exit 1
+# Outside any repository, so the project tests don't find this one around them.
+work="$(mktemp -d "${TMPDIR:-/tmp}/test-install.XXXXXX")" || exit 1
 work="$(cd "$work" && pwd -P)"
 trap 'rm -rf "$work"' EXIT
 failures=0
@@ -101,5 +102,60 @@ fresh four
 PATH="$fakes:$base" "$src/install.sh" nonsense > "$work/out" 2>&1
 check "an unknown argument exits 2" [ $? -eq 2 ]
 check "an unknown argument changes nothing" [ ! -e "$HOME/.claude" ]
+
+# project: a new git repository gets every template, a CLAUDE.md that imports them, and the hooks
+fresh five && mkdir -p "$work/p1" && cd "$work/p1" && git init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project succeeds" [ $? -eq 0 ]
+for f in docs/CLAUDE.md CONTRIBUTING.md scripts/hooks/commit-msg .claude/agents/code-reviewer.md \
+    .github/workflows/review.yml .github/pull_request_template.md; do
+    check "project adds $f" [ -f "$f" ]
+done
+check "project's CLAUDE.md imports CONTRIBUTING.md and docs/CLAUDE.md" \
+    [ "$(cat CLAUDE.md)" = "$(printf '@CONTRIBUTING.md\n@docs/CLAUDE.md')" ]
+check "project's commit-msg hook is executable" [ -x scripts/hooks/commit-msg ]
+check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
+check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
+check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
+echo mine > docs/CLAUDE.md
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "a second project run keeps an edited template" [ "$(cat docs/CLAUDE.md)" = mine ]
+check "a second project run says it kept it" grep -q "kept docs/CLAUDE.md" "$work/out"
+
+# project --apple
+mkdir -p "$work/p2" && cd "$work/p2" && git init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple succeeds" [ $? -eq 0 ]
+check "project --apple adds CODING.md and the code smells" [ -f CODING.md ] && [ -f docs/code-smells.md ]
+check "project --apple's CLAUDE.md imports all four" \
+    [ "$(cat CLAUDE.md)" = "$(printf '@CONTRIBUTING.md\n@CODING.md\n@docs/CLAUDE.md\n@docs/code-smells.md')" ]
+check "project --apple installs swift-lsp once" [ "$(count "plugin install swift-lsp@claude-plugins-official")" -eq 1 ]
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "a second project --apple run doesn't install swift-lsp again" [ "$(count "plugin install swift-lsp")" -eq 1 ]
+
+# A CLAUDE.md of the project's own is never rewritten; it says what to add
+mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "an existing CLAUDE.md is left as it was" [ "$(cat CLAUDE.md)" = "# our rules" ]
+check "it lists the imports to add" grep -q "@docs/CLAUDE.md" "$work/out"
+
+# Not a git repository yet, and a hooksPath of the project's own
+mkdir -p "$work/p4" && cd "$work/p4" || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "a folder without git still gets the templates" [ $? -eq 0 ] && [ -f docs/CLAUDE.md ]
+check "it says to set core.hooksPath after git init" grep -q "after git init" "$work/out"
+mkdir -p "$work/p5" && cd "$work/p5" && git init -q && git config core.hooksPath .githooks || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "a hooksPath of the project's own is kept" [ "$(git config core.hooksPath)" = .githooks ]
+
+# Refusals
+mkdir -p "$work/p1/sub" && cd "$work/p1/sub" && PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project in a repository's subfolder fails" [ $? -eq 1 ]
+check "project in a repository's subfolder adds nothing" [ ! -e "$work/p1/sub/docs" ]
+cd "$work/p1" && PATH="$fakes:$base" "$src/install.sh" project --bogus > "$work/out" 2>&1
+check "project with an unknown option exits 2" [ $? -eq 2 ]
+cd "$src" && PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project in the workflow's own clone fails" [ $? -eq 1 ]
+check "project in the workflow's own clone adds nothing" [ ! -e "$src/CONTRIBUTING.md" ]
 
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

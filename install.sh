@@ -1,7 +1,9 @@
 #!/bin/sh
 # Sets up Claude Code on this machine with this workflow. Safe to run again: each step is skipped when done.
 #
-#   install.sh              the clone, ~/.claude/CLAUDE.md, the plugins and graphify
+#   install.sh                    the clone, ~/.claude/CLAUDE.md, the plugins and graphify
+#   install.sh project            the same, then the templates into the current folder
+#   install.sh project --apple    also the Apple coding guide and code smells, and swift-lsp
 #
 # After the first run it's on the PATH as claude-workflow.
 # Without a clone: curl -fsSL https://raw.githubusercontent.com/inezamanda/claude-workflow/main/install.sh | sh
@@ -17,7 +19,7 @@ fail() {
 }
 
 usage() {
-    sed -n '3,5p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+    sed -n '3,7p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
 }
 
 # The clone this script runs from (through the claude-workflow link too), or ~/.claude-workflow when it was
@@ -112,8 +114,80 @@ machine() {
     graphify_tool
 }
 
+# copy <from, in the clone> <to, in this folder>: never over a file that's already there.
+copy() {
+    if [ -e "$2" ]; then
+        say "kept $2, which is already there"
+        return
+    fi
+    mkdir -p "$(dirname "$2")" && cp "$repo/$1" "$2" && say "added $2" || fail "couldn't add $2"
+}
+
+project() {
+    if [ "$(pwd -P)" = "$repo" ]; then
+        fail "this is the workflow's own clone; run claude-workflow project in the project's folder"
+        return
+    fi
+    top="$(git rev-parse --show-toplevel 2>/dev/null)"
+    if [ -n "$top" ] && [ "$(cd "$top" && pwd -P)" != "$(pwd -P)" ]; then
+        fail "the templates go at the repository's root; run claude-workflow project in $top"
+        return
+    fi
+    copy core/principles.md docs/CLAUDE.md
+    copy core/CONTRIBUTING.md CONTRIBUTING.md
+    copy core/hooks/commit-msg scripts/hooks/commit-msg
+    copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
+    copy core/github/review.yml .github/workflows/review.yml
+    copy core/github/pull_request_template.md .github/pull_request_template.md
+    imports="@CONTRIBUTING.md @docs/CLAUDE.md"
+    if [ "$apple" = 1 ]; then
+        copy apple/CODING.md CODING.md
+        copy apple/CLAUDE.md docs/code-smells.md
+        imports="@CONTRIBUTING.md @CODING.md @docs/CLAUDE.md @docs/code-smells.md"
+    fi
+
+    # A CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.
+    if [ ! -e CLAUDE.md ]; then
+        printf '%s\n' $imports > CLAUDE.md && say "added CLAUDE.md, which imports the others" || fail "couldn't add CLAUDE.md"
+    else
+        missing=""
+        for line in $imports; do
+            grep -qxF "$line" CLAUDE.md || missing="$missing $line"
+        done
+        if [ -n "$missing" ]; then
+            skip "CLAUDE.md is already there; add these lines to it to import the templates:"
+            printf '  %s\n' $missing >&2
+        fi
+    fi
+
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        skip "this folder isn't a git repository yet; after git init, run: git config core.hooksPath scripts/hooks"
+    else
+        hooks="$(git config core.hooksPath)"
+        if [ -z "$hooks" ]; then
+            git config core.hooksPath scripts/hooks && say "set core.hooksPath to scripts/hooks" || fail "couldn't set core.hooksPath"
+        elif [ "$hooks" != scripts/hooks ]; then
+            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg there to use it"
+        fi
+    fi
+
+    [ "$apple" = 1 ] && plugins swift-lsp@claude-plugins-official=anthropics/claude-plugins-official
+}
+
+mode=machine apple=0
 case "${1:-}" in
     "") ;;
+    project)
+        mode=project
+        case "${2:-}" in
+            "") ;;
+            --apple) apple=1 ;;
+            *)
+                usage >&2
+                exit 2
+                ;;
+        esac
+        ;;
     -h | --help)
         usage
         exit 0
@@ -126,4 +200,5 @@ esac
 
 find_repo
 machine
+[ "$mode" = project ] && project
 [ "$failed" -eq 0 ] && say "done" || exit 1
