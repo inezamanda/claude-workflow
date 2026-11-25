@@ -46,6 +46,8 @@ git init -q "$repo" && cp -R "$root/scripts" "$repo/" && printf 'Secretname\n\n'
 scrub_msg() { (cd "$repo" && scripts/hooks/commit-msg "$work/msg"); }
 message 'chore: x\n';                                   expect pass   "scrub: clean message" scrub_msg
 message 'chore: x\n\n# secretname\n';                   expect refuse "scrub: word in a # line, other case" scrub_msg
+message 'chore: x\n\nsee github.com/secretnameco\n';    expect pass   "scrub: listed word inside a longer word" scrub_msg
+message "chore: x\n\nSecretname's notes\n";             expect refuse "scrub: listed word before an apostrophe" scrub_msg
 message 'chore: x\n# ------------------------ >8 ------------------------\n+Secretname\n'
 expect pass "scrub: word only below the scissors line" scrub_msg
 (cd "$repo" && echo clean > a.txt && git add a.txt) && expect pass "scrub: clean staged file" sh -c "cd '$repo' && scripts/hooks/pre-commit"

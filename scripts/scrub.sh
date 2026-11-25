@@ -14,7 +14,8 @@ if [ ! -s "$patterns" ]; then
     exit 1
 fi
 
-hits="$(grep -inFf "$patterns")"
+# Whole words only, so a listed name still matches on its own but not inside a longer word, such as a username.
+hits="$(grep -inwFf "$patterns")"
 if [ -n "$hits" ]; then
     echo "scrub: $1 contains a word from $list:" >&2
     echo "$hits" >&2
