@@ -1,0 +1,105 @@
+#!/bin/sh
+# Runs install.sh against a throwaway HOME, with fake claude, uv and graphify commands that record their calls,
+# so it never touches the real setup or the network.
+# Usage: scripts/test-install.sh (from anywhere in the repository)
+
+root="$(git rev-parse --show-toplevel)" || exit 1
+mkdir -p "$root/build" && work="$(mktemp -d "$root/build/test-install.XXXXXX")" || exit 1
+work="$(cd "$work" && pwd -P)"
+trap 'rm -rf "$work"' EXIT
+failures=0
+
+check() { # check <name> <command...>
+    name="$1"
+    shift
+    if "$@" >/dev/null 2>&1; then echo "ok    $name"; else echo "FAIL  $name"; failures=$((failures + 1)); fi
+}
+
+# The repository as it is now, uncommitted files included, as a clone of its own.
+src="$work/src"
+mkdir -p "$src" && (cd "$root" && git ls-files -co --exclude-standard | while read -r f; do
+    mkdir -p "$src/$(dirname "$f")" && cp -p "$f" "$src/$f"
+done)
+git -C "$src" init -q && git -C "$src" add -A && git -C "$src" -c user.name=t -c user.email=t@t commit -qm init
+
+# Fakes. claude keeps its plugins and marketplaces in $STATE; uv "installs" a graphify that installs a skill.
+fakes="$work/fakes" nofakes="$work/nofakes"
+mkdir -p "$fakes" "$nofakes"
+cat > "$fakes/claude" <<'EOF'
+#!/bin/sh
+echo "$*" >> "$STATE/log"
+case "$*" in
+    "plugin list") cat "$STATE/installed" 2>/dev/null ;;
+    "plugin marketplace list") cat "$STATE/markets" 2>/dev/null ;;
+    "plugin marketplace add "*) echo "  Source: GitHub ($4)" >> "$STATE/markets" ;;
+    "plugin install "*) echo "  > $3" >> "$STATE/installed" ;;
+esac
+EOF
+cat > "$fakes/uv" <<'EOF'
+#!/bin/sh
+echo "uv $*" >> "$STATE/log"
+printf '#!/bin/sh\necho "graphify $*" >> "$STATE/log"\nmkdir -p "$HOME/.claude/skills/graphify"\n' > "$FAKES/graphify"
+chmod +x "$FAKES/graphify"
+EOF
+chmod +x "$fakes/claude" "$fakes/uv"
+export FAKES="$fakes"
+
+# fresh <name>: a new HOME and fake state, where the official marketplace is already configured.
+fresh() {
+    export HOME="$work/$1" STATE="$work/$1-state"
+    mkdir -p "$HOME" "$STATE"
+    echo "  Source: GitHub (anthropics/claude-plugins-official)" > "$STATE/markets"
+    rm -f "$fakes/graphify"
+}
+count() { grep -c "$1" "$STATE/log" 2>/dev/null || true; }
+base="/usr/bin:/bin"
+
+# From a clone, with an old CLAUDE.md in place
+fresh one && mkdir -p "$HOME/.claude" && echo old > "$HOME/.claude/CLAUDE.md"
+PATH="$fakes:$HOME/.local/bin:$base" "$src/install.sh" > "$work/out" 2>&1
+check "first run succeeds" [ $? -eq 0 ]
+check "CLAUDE.md links to the clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$src/core/CLAUDE.md" ]
+check "the old CLAUDE.md is kept as a backup" sh -c "cat '$HOME'/.claude/CLAUDE.md.backup.* | grep -qx old"
+check "claude-workflow links to install.sh" [ "$(readlink "$HOME/.local/bin/claude-workflow")" = "$src/install.sh" ]
+for p in caveman@caveman ponytail@ponytail superpowers@claude-plugins-official; do
+    check "installs $p" [ "$(count "plugin install $p")" -eq 1 ]
+done
+check "adds the two missing marketplaces" [ "$(count "plugin marketplace add")" -eq 2 ]
+check "doesn't add the official marketplace again" [ "$(count "marketplace add anthropics")" -eq 0 ]
+check "installs graphify and its skill" [ -d "$HOME/.claude/skills/graphify" ]
+
+# Again, through the claude-workflow link: nothing new happens
+calls="$(wc -l < "$STATE/log")"
+PATH="$fakes:$HOME/.local/bin:$base" claude-workflow > "$work/out" 2>&1
+check "second run through the link succeeds" [ $? -eq 0 ]
+check "second run installs nothing" [ "$(count "plugin install")" -eq 3 ]
+check "second run calls only the two lists" [ "$(wc -l < "$STATE/log")" -eq $((calls + 2)) ]
+check "second run makes no new backup" [ "$(ls "$HOME/.claude" | grep -c backup)" -eq 1 ]
+check "the link doesn't make a second clone" [ ! -e "$HOME/.claude-workflow" ]
+
+# Piped in, as from curl: it clones, and later updates the clone
+fresh two && cd "$work" || exit 1
+CLAUDE_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" sh < "$src/install.sh" > "$work/out" 2>&1
+check "piped run succeeds" [ $? -eq 0 ]
+check "piped run clones to ~/.claude-workflow" [ -f "$HOME/.claude-workflow/core/CLAUDE.md" ]
+check "piped run links CLAUDE.md into that clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.claude-workflow/core/CLAUDE.md" ]
+check "piped run warns that ~/.local/bin isn't on the PATH" grep -q "add ~/.local/bin to your PATH" "$work/out"
+echo new > "$src/new-file" && git -C "$src" add new-file && git -C "$src" -c user.name=t -c user.email=t@t commit -qm new
+PATH="$fakes:$base" "$HOME/.local/bin/claude-workflow" > "$work/out" 2>&1
+check "a later run pulls the clone" [ -f "$HOME/.claude-workflow/new-file" ]
+
+# Without Claude Code or uv: the links are still made, and it says what it skipped
+fresh three
+PATH="$nofakes:$base" "$src/install.sh" > "$work/out" 2>&1
+check "run without claude or uv succeeds" [ $? -eq 0 ]
+check "run without claude still links CLAUDE.md" [ -L "$HOME/.claude/CLAUDE.md" ]
+check "run without claude says the plugins were skipped" grep -q "plugins were skipped" "$work/out"
+check "run without uv says graphify was skipped" grep -q "graphify was skipped" "$work/out"
+
+# An unknown argument
+fresh four
+PATH="$fakes:$base" "$src/install.sh" nonsense > "$work/out" 2>&1
+check "an unknown argument exits 2" [ $? -eq 2 ]
+check "an unknown argument changes nothing" [ ! -e "$HOME/.claude" ]
+
+[ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
