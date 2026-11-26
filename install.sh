@@ -123,6 +123,17 @@ copy() {
     mkdir -p "$(dirname "$2")" && cp "$repo/$1" "$2" && say "added $2" || fail "couldn't add $2"
 }
 
+# above <file in the clone>: prints the first CLAUDE.md in a folder above this one with the same text, if any.
+# Claude Code loads those too, so a copy here would load the same rules twice.
+above() {
+    dir="$(dirname "$(pwd -P)")"
+    while :; do
+        [ -f "$dir/CLAUDE.md" ] && cmp -s "$dir/CLAUDE.md" "$repo/$1" && { say "$dir/CLAUDE.md"; return 0; }
+        [ "$dir" = / ] && return 1
+        dir="$(dirname "$dir")"
+    done
+}
+
 project() {
     if [ "$(pwd -P)" = "$repo" ]; then
         fail "this is the workflow's own clone; run claude-workflow project in the project's folder"
@@ -142,8 +153,13 @@ project() {
     imports="@CONTRIBUTING.md @docs/CLAUDE.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md
-        copy apple/CLAUDE.md docs/code-smells.md
-        imports="@CONTRIBUTING.md @CODING.md @docs/CLAUDE.md @docs/code-smells.md"
+        imports="@CONTRIBUTING.md @CODING.md @docs/CLAUDE.md"
+        if smells="$(above apple/CLAUDE.md)"; then
+            skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
+        else
+            copy apple/CLAUDE.md docs/code-smells.md
+            imports="$imports @docs/code-smells.md"
+        fi
     fi
 
     # A CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.

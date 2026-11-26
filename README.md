@@ -51,7 +51,7 @@ claude-workflow project --apple    # a Swift or SwiftUI app
 | `project` | `docs/CLAUDE.md` (the principles), `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, and a root `CLAUDE.md` that imports them; it also sets `core.hooksPath` |
 | `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, the swift-lsp plugin and the three Swift skills |
 
-It never overwrites a file that's already there. If the project has a `CLAUDE.md` of its own, it prints the import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
+It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has a `CLAUDE.md` of its own, it prints the import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
 
 `principles.md` describes two levels: **full**, for projects that hold people's data, money or credentials, and **light**, for everything else. Pick one in each plan.
 

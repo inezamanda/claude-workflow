@@ -138,6 +138,15 @@ PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "a second project --apple run doesn't install swift-lsp again" [ "$(count "plugin install swift-lsp")" -eq 1 ]
 check "a second project --apple run doesn't install the Swift skills again" [ "$(count "plugin install swift")" -eq 4 ]
 
+# project --apple under a folder whose CLAUDE.md already holds the code smells, which Claude Code loads too
+mkdir -p "$work/apps/p4" && cp "$src/apple/CLAUDE.md" "$work/apps/CLAUDE.md" && cd "$work/apps/p4" && git init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple under the code smells succeeds" [ $? -eq 0 ]
+check "project --apple under the code smells doesn't copy them" [ ! -e docs/code-smells.md ]
+check "project --apple under the code smells says where they are" grep -q "$work/apps/CLAUDE.md" "$work/out"
+check "project --apple under the code smells imports three" \
+    [ "$(cat CLAUDE.md)" = "$(printf '@CONTRIBUTING.md\n@CODING.md\n@docs/CLAUDE.md')" ]
+
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
