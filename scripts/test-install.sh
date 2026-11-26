@@ -130,8 +130,13 @@ check "project --apple adds CODING.md and the code smells" [ -f CODING.md ] && [
 check "project --apple's CLAUDE.md imports all four" \
     [ "$(cat CLAUDE.md)" = "$(printf '@CONTRIBUTING.md\n@CODING.md\n@docs/CLAUDE.md\n@docs/code-smells.md')" ]
 check "project --apple installs swift-lsp once" [ "$(count "plugin install swift-lsp@claude-plugins-official")" -eq 1 ]
+for p in swift-concurrency-pro@swift-concurrency-agent-skill swiftui-pro@swiftui-agent-skill \
+    swift-testing-pro@swift-testing-agent-skill; do
+    check "project --apple installs $p" [ "$(count "plugin install $p")" -eq 1 ]
+done
 PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "a second project --apple run doesn't install swift-lsp again" [ "$(count "plugin install swift-lsp")" -eq 1 ]
+check "a second project --apple run doesn't install the Swift skills again" [ "$(count "plugin install swift")" -eq 4 ]
 
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1

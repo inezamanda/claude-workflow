@@ -49,7 +49,7 @@ claude-workflow project --apple    # a Swift or SwiftUI app
 | Command | Adds |
 | --- | --- |
 | `project` | `docs/CLAUDE.md` (the principles), `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, and a root `CLAUDE.md` that imports them; it also sets `core.hooksPath` |
-| `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, and the swift-lsp plugin |
+| `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, the swift-lsp plugin and the three Swift skills |
 
 It never overwrites a file that's already there. If the project has a `CLAUDE.md` of its own, it prints the import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
 
@@ -64,6 +64,7 @@ It never overwrites a file that's already there. If the project has a `CLAUDE.md
 - [ponytail](https://github.com/DietrichGebert/ponytail): the smallest change that solves the task.
 - [graphify](https://github.com/Graphify-Labs/graphify): a code graph to ask before searching files. It needs [uv](https://docs.astral.sh/uv/); without it, the script skips graphify and says so.
 - swift-lsp, with `--apple` only: Swift code navigation for Claude (definitions, references, types), from Xcode's `sourcekit-lsp`.
+- [Swift Concurrency Pro](https://github.com/twostraws/Swift-Concurrency-Agent-Skill), [SwiftUI Pro](https://github.com/twostraws/SwiftUI-Agent-Skill) and [Swift Testing Pro](https://github.com/twostraws/Swift-Testing-Agent-Skill), with `--apple` only: review and writing rules for modern Swift, by Paul Hudson. A skill's text becomes instructions to Claude, so keep auto-update off for their marketplaces in `/plugin`, read what changed, then run `/plugin update`. A project's `CODING.md` wins where they differ.
 
 Optional, not installed: [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian), if you keep project notes in an Obsidian vault.
 

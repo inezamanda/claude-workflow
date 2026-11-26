@@ -3,7 +3,7 @@
 #
 #   install.sh                    the clone, ~/.claude/CLAUDE.md, the plugins and graphify
 #   install.sh project            the same, then the templates into the current folder
-#   install.sh project --apple    also the Apple coding guide and code smells, and swift-lsp
+#   install.sh project --apple    also the Apple coding guide and code smells, swift-lsp and the Swift skills
 #
 # After the first run it's on the PATH as claude-workflow.
 # Without a clone: curl -fsSL https://raw.githubusercontent.com/inezamanda/claude-workflow/main/install.sh | sh
@@ -171,7 +171,11 @@ project() {
         fi
     fi
 
-    [ "$apple" = 1 ] && plugins swift-lsp@claude-plugins-official=anthropics/claude-plugins-official
+    [ "$apple" = 1 ] && plugins \
+        swift-lsp@claude-plugins-official=anthropics/claude-plugins-official \
+        swift-concurrency-pro@swift-concurrency-agent-skill=twostraws/Swift-Concurrency-Agent-Skill \
+        swiftui-pro@swiftui-agent-skill=twostraws/SwiftUI-Agent-Skill \
+        swift-testing-pro@swift-testing-agent-skill=twostraws/Swift-Testing-Agent-Skill
 }
 
 mode=machine apple=0
