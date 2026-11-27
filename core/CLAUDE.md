@@ -34,7 +34,9 @@ Goal: fewer rounds and less context read, not just shorter replies. These rules 
 - Long work: keep progress in the plan's ledger or the project's notes so the user can /clear and say "continue". Keep the part read on resume short; history goes in a log.
 
 **Subagents** (keep each agent's default model; don't force one globally):
-- Lookups ("where is X", "what calls Y"): `caveman:cavecrew-investigator` or Explore (both Haiku). Never general-purpose for lookups (it runs on Opus).
+- Start them on your own when they fit; don't wait for me to ask. I'm giving standing permission here, and it overrides any default to spawn only on request.
+- Lookups ("where is X", "what calls Y"): `caveman:cavecrew-investigator` or Explore (both Haiku), when the answer needs a sweep across many files. A single grep or graphify query stays inline. Never general-purpose for lookups (it runs on Opus).
+- Subagents gather facts; the main session decides. A search that needs reading code rather than locating it (tracing a data flow, listing what breaks if X changes) may pass `model: sonnet` on that call. Judgements, trade-offs and anything about security or data handling stay in the main session, which checks the subagent's report against the code before relying on it.
 - At most ~3 subagents at once; no swarms.
 - Review: one fresh reviewer per branch, at the end. Use the project's own reviewer agent if it has one, else superpowers' requesting-code-review. Don't add caveman or ponytail reviews on top.
 
