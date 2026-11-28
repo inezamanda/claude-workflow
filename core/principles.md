@@ -1,6 +1,6 @@
 # Working with an AI agent: principles
 
-This is the agent's guide to how work is done in a project: who decides, how a change is planned, proven, reviewed and committed. Copy it into a new project (as `docs/CLAUDE.md`, imported from the root `CLAUDE.md`, or as the root `CLAUDE.md` itself) and adapt it. "The maintainer" is the person who decides what the project does and merges its changes; "the agent" is Claude Code or any other coding agent.
+This is the agent's guide to how work is done in a project: who decides, how a change is planned, proven, reviewed and committed. `agent-workflow project` copies it into a project as `docs/principles.md`, which the root `AGENTS.md` lists for every agent tool and the root `CLAUDE.md` imports for Claude Code; adapt it there. "The maintainer" is the person who decides what the project does and merges its changes; "the agent" is whichever coding agent does the work, such as Claude Code, Codex or Cursor.
 
 The file has two halves. **Principles** are judgement: read them first and apply them to cases nobody has written down. **Rules** are the specific traps behind them, kept under the principle they belong to. A rule only covers the case it came from; the principle is what catches the next one. A new project starts with almost no rules and grows its own.
 
@@ -41,7 +41,7 @@ When a shortcut and privacy disagree, privacy wins, even in tests, messages and 
 
 - Never use real people's data in code, tests, fixtures, logs, issues or messages. Tests use made-up values that can't belong to anyone.
 - Show `git status` before each commit. Stop if any file looks like real data; check the files meant to change are there, and that the message claims only what the diff contains.
-- Private notes (plans, decisions, reviews) live in their own repository, never in the public one, and public code and docs never point to them. Say the rule briefly in a comment instead.
+- **Each project chooses where its notes (plans, decisions, reviews) live, and its `AGENTS.md` says which.** Public notes go in `docs/`, where every worktree and the pull request review can read them; choose them only when the notes hold nothing private. Notes with business plans, people's details or anything else private live in a repository of their own, never in the public one, and public code and docs never point to it. Say the rule briefly in a comment instead.
 - Log nothing that could hold a user's data: no field values, names, keys or file contents.
 
 ### 3. Decide before coding
@@ -75,7 +75,7 @@ After writing code, read it again as a reviewer: is there a simpler way, a share
 
 **Fix the class, not the instance.** A finding, a failure or a review comment names one case. Before fixing it, name the kind of problem and work out every case of that kind, then fix them together, and prefer the platform's own tool to a hand-made one. Concurrency means walking through two runs interleaved, step by step; a CI failure means listing every way a run can end. Before blaming an outside cause ("probably an outage"), check it.
 
-- **The maintainer reviews each commit; one reviewer agent reviews the whole branch once, at its end**, without the maintainer's findings, so the two reviews stay independent. Check each of its findings against the code, then report three lists: what both found, what only the agent found (accepted or rejected, and why), and what only the maintainer found.
+- **The maintainer reviews each commit; a reviewer agent reviews the spec before any code and the whole branch once, at its end**, without the maintainer's findings, so the two reviews stay independent. Check each of its findings against the code, then report three lists: what both found, what only the agent found (accepted or rejected, and why), and what only the maintainer found.
 - **Reply to every review comment on a pull request**, from bots and people alike: name the fix commit and its test, or say why it isn't fixed. Before calling a pull request ready, check every thread has a reply.
 - **Guides and plans get several passes:** draft, check against the sources, against the other docs, against the real code, try them on the next real task, then trim.
 
@@ -88,7 +88,8 @@ A branch does what its edge list says. Edges found mid-branch go to the next bra
 The maintainer may plan in another tool or session that only sees what it's given. The notes are how it, and the agent's next session, know what happened.
 
 - **Once per branch, before its push, bring the notes up to date:** the current state, the plan, new or replaced decisions, the review notes, and the README or coding guide when the change affects them. Say what changed.
-- **A branch can span sessions.** Before a session ends, the notes name the next commit, and the plan marks approved commits with their hashes and the maintainer's notes, so the next session starts with `/clear` and "continue from the notes". On resume, read only the current state.
+- **A branch can span sessions.** Before a session ends, the notes name the next commit, and the plan marks approved commits with their hashes and the maintainer's notes, so the next session starts fresh (in Claude Code, `/clear`) with "continue from the notes". On resume, read only the current state.
+- **Independent tasks can run in parallel: one worktree, one session and one branch each**, and each branch gets its own review at its end. Tasks that need each other's results, or keep changing the same files, aren't independent; run them one after another. Give each worktree its own build output and test devices or simulators, so runs don't collide.
 - **Ask the code graph before grepping**, where the project has one; the notes say what was decided, the graph says where it is. Check a surprising "not found" with grep: a graph can be behind.
 - Where the built UI differs from the design, say so in the notes.
 
@@ -110,11 +111,11 @@ Comments, docs and messages should read like a note from a teammate. Avoid the u
 
 ## Rules: tools
 
-These hold for Claude Code's shell. Add the project's own under a heading per tool.
+These hold for any agent working in a shell, Claude Code's included. Add the project's own under a heading per tool.
 
 - **Dates come from the clock** (`date`), never from earlier notes or messages; a session can cross midnight.
 - **Chain every step of a shell command with `&&`**, or end a check with `|| exit 1`. `set -e` may have no effect in the agent's shell, so a failed step can let the next ones run on.
-- **Make precise code edits with the editor tool**, not with replace scripts: a formatter may have rewrapped the line a script looks for.
+- **Make precise code edits with the agent's own edit tool**, not with replace scripts: a formatter may have rewrapped the line a script looks for.
 - **Undo an experiment from a copy saved just before it, and check it with `cmp`.** `git checkout` of the file also undoes the commit's own uncommitted changes.
 - **Keep scratch copies and worktrees in a git-ignored folder of the project** (such as `build/`), not in a temporary folder that can vanish between sessions.
 - **Don't edit source files while a test run is still building**; a run that builds mid-edit tests a half-changed file.

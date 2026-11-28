@@ -33,8 +33,9 @@ core/                          for any project, any tool
   global/AGENTS.md             rules for every session: vocabulary, commit OK, voice, sessions and subagents
   global/CLAUDE.md             Claude adapter: @AGENTS.md, then the plugins and one skill per step
   principles.md                kept; the changes are listed under commit 9
-  AGENTS.md                    the project's root file: what to read, and where the notes live
-  CLAUDE.md                    the project's Claude bridge: @AGENTS.md and the imports
+  project/AGENTS.md            the project's root file: what to read, and where the notes live
+  project/CLAUDE.md            the project's Claude bridge: @AGENTS.md and the imports
+  CLAUDE.md                    forwards to global/CLAUDE.md, for links made before commit 5
   CONTRIBUTING.md
   templates/spec.md            a branch's plan: context, design review, edge list, tests, commits, ledger
   templates/decisions.md
@@ -61,7 +62,7 @@ The maintainer orchestrates. A session may plan, write code, start subagents and
 
 | Role | Kind | Model, effort (proposed) | Input | Output | Tools | May not | When |
 |---|---|---|---|---|---|---|---|
-| Planner | session, plan mode in Claude | Opus 5.5: xhigh on a full-level branch, high otherwise | the task, the code, the notes | the spec file, from the template | read, search | write code; decide for the maintainer | before each branch |
+| Planner | session, plan mode in Claude | Opus 5.5 high; xhigh only when plan reviews keep finding design musts | the task, the code, the notes | the spec file, from the template | read, search | write code; decide for the maintainer | before each branch |
 | Implementer | session | Opus 5.5 high on full level, Sonnet 5.5 high on light | the approved spec | commits, each shown before its OK | all, within the hooks | change the spec without stopping to ask | after the spec is approved |
 | Explorer | subagent | Haiku 5.5, low | one question | `path:line` facts | read, search | judge or decide | when a lookup spans many files |
 | Test writer | subagent, **experiment** | the implementer's model, so only independence changes | the spec's approved types, function names and test names | failing tests, never code | read; write only in test folders | read the implementation; change a test name | before each logic commit |
@@ -95,11 +96,11 @@ Protected paths are listed once per project, for example the protocol folder, th
 - **edge-list.md**: per screen or function, one row per edge: empty, wrong or too long input; each picker option; errors and interruptions mid-action; keyboard, sheets, alerts and focus; screen readers, large text, dark mode; what other screens show afterwards. Columns: edge, expected, decision, test.
 - **The spec catches what reviews kept finding.** In six past plan reviews of the iOS app, most findings were claims about existing code that were wrong, and tests that couldn't fail. So the spec template asks for a `path:line` behind every claim about existing code, and the mutation each test catches; and it ends with a "ready for review" checklist the planner runs first. The reviewer checks those, and spends its effort on design.
 - **Review rounds, for the plan and for the branch alike:** round 1 reads everything. Round 2 reads its own findings, the diff since round 1, and the code and plan sections each fix touches or depends on: the iOS app's round-2 musts sat there, including fixes that showed the real problem was a different one. A full fresh re-read runs only on a full-level branch where a round-1 must changed the design, since that's where problems far from the fixes turned up (decisions, 28 Nov).
-- **Open:** one `decisions.md` table, which two parallel branches can conflict on, or one file per decision (`docs/decisions/<date>-<topic>.md`).
+- **decisions.md** is append-only and has `docs/decisions.md merge=union` in the project's `.gitattributes`, so parallel branches' new rows merge without a conflict. Its header says to search by area and to archive past about 300 lines (decisions, 28 Nov). Not verified: whether GitHub's merge button uses the driver; if it shows a conflict, `git merge main` in the branch, locally, settles it.
 
 ## Commits
 
-Sizes count non-test lines added and removed. Five branches, each a pull request.
+Sizes count non-test lines added and removed. Five branches, each a pull request, one after another: almost every one changes `install.sh` and its tests (decisions, 28 Nov). Each starts in a fresh session from this plan.
 
 **Branch 1, `fix/repository-name`**
 
@@ -109,13 +110,14 @@ Sizes count non-test lines added and removed. Five branches, each a pull request
 
 **Branch 2, `feat/agents-md`**
 
-4. `docs: add templates for a spec, a decisions log and an edge list`. ~150, M.
+4. `docs: add templates for a spec, a decisions log and an edge list`: `install.sh project` copies them into `docs/templates/` and writes `.gitattributes` with the `union` line, which this repository gets too (decisions, 28 Nov). ~160, M.
 5. `refactor: split the global instructions into AGENTS.md and a Claude adapter`: mostly a move; `install.sh` links the new path. ~60, S.
 6. `feat: give projects an AGENTS.md that CLAUDE.md imports`: both templates; `install.sh` writes them and keeps its never-overwrite rule. ~100, M.
-7. `feat: put the skills in .agents/skills with a .claude/skills link`. ~40, S. **Open:** the Swift Pro skills stay Claude plugins, or are copied into `.agents/skills/` with a lock file, like the iOS app's.
-8. `docs: one skill per step in the Claude adapter`: the table agreed in chat, replacing the duplicates. ~60, S. **Open:** the table isn't approved yet.
-9. `docs: make the principles tool-neutral and the notes a choice per project`: line 3, principle 2 (public or private notes), principle 8 (parallel sessions and worktrees), lines 91, 113 and 117. ~60, S.
+7. `feat: put the skills in .agents/skills with a .claude/skills link`: for skills a project keeps itself, such as the Axiom copies. ~40, S. Hudson's skills stay plugins (decisions, 28 Nov).
+8. `docs: one skill per step in the Claude adapter`: the table (decisions, 28 Nov), replacing the duplicates; that `skillOverrides` doesn't reach plugin skills; and that a session doing light work asks the maintainer to switch to Sonnet 5.5. ~70, S.
+9. `docs: make the principles tool-neutral and the notes a choice per project`: line 3, principle 2 (public or private notes), principle 8 (parallel sessions and worktrees), lines 91, 113 and 117. ~60, S. The project's copy is renamed from `docs/CLAUDE.md` to `docs/principles.md`; an old copy isn't copied again, and `install.sh` prints the `git mv` and the lines to change (decisions, 28 Nov).
 10. `docs: let the reviewer read the spec first and the Swift skills`: `code-reviewer.md` reads `AGENTS.md` and the plan, checks the spec's citations and mutations, and has a round-2 mode that reads only its findings and the plan's diff. ~40, S.
+10a. `feat: keep AGENTS.md and CLAUDE.md private where the notes are`: added after commit 10 from the open question found while checking commit 9 (decisions, 28 Nov). ~30, S.
 
 **Branch 3, `feat/guardrails`**
 
@@ -129,15 +131,20 @@ Sizes count non-test lines added and removed. Five branches, each a pull request
 15. `feat(apple): add swift-format and SwiftLint configs`: the iOS app's general rules, without its own. ~160, M.
 16. `feat(apple): lint staged Swift files in pre-commit`. ~40, S.
 17. `ci(apple): lint and run the package tests on Linux`. ~50, S.
-17a. `feat(apple): add Axiom's accessibility and Instruments skills`: `accessibility-diag`, `ux-flow-audit`, `performance-profiling`, `memory-debugging`, `swiftui-performance`, copied into `.agents/skills/` at one pinned Axiom commit with its MIT notice, each read before it's added. A pure copy counts nothing; ~20 lines of notes. S. Checked first: each copied skill works without Axiom's routers and hooks. Axiom's Vision skills go to the iOS app later, not here.
+17a. `feat(apple): add Axiom's accessibility and Instruments skills`: `accessibility-diag`, `ux-flow-audit`, `performance-profiling`, `memory-debugging`, `swiftui-performance`, copied into `.agents/skills/` at one pinned Axiom commit with its MIT notice, each read before it's added. A pure copy counts nothing; ~20 lines of notes. S. Checked first: each copied skill works without Axiom's routers and hooks. Axiom's Vision skills go to the iOS app later, not here. **Open:** drop `accessibility-diag`, now that Apple's plugin (17b) has VoiceOver, Dynamic Type and contrast skills, and whether `ux-flow-audit` stays.
+17b. `feat(apple): install Apple's Xcode plugin with --apple`: `xcode@claude-plugins-official`, by Apple, added to the `--apple` plugin list, and its tests. ~10, S (decisions, 28 Nov). Its source is `xcrun agent plugin path --plugin-format claude`, so each Xcode release brings its own version: skills for accessibility, SwiftUI, App Intents, Swift Testing migration, devices and translation, and `xcrun mcpbridge` to Xcode's MCP tools (build, test, previews, simulators, documentation search). The tools work only while Xcode is open, and CI keeps `xcodebuild` and `swift test`. Checked first: its startup cost with `claude plugin details`, and whether Xcode must allow external agents in its Intelligence settings. Commit 8's table says which skill reviews SwiftUI, since `swiftui-specialist` overlaps `swiftui-pro`.
 
 **Branch 5, `feat/agent-experiment`**
 
 18. `feat: add the test-writer and test-runner agents`. ~100, M.
 19. `docs: describe the experiment and its results table`. ~80, S.
-20. `docs: describe the layout, the tools and the guardrails in the readme`. ~80, S.
+20. `docs: describe the layout, the tools and the guardrails in the readme`: the file tree also lists `docs/` as this repository's own plan and decisions, not copied into projects. ~80, S.
 
 Also open: whether this repository gets its own root `AGENTS.md` and `CLAUDE.md`, and whether graphify's `post-commit` refresh joins `core/`.
+
+- **Decided (commit 10a):** what `install.sh project` writes where a project's notes are private. In the iOS app, `docs/` is a private repository of its own, ignored by the app's `.gitignore`, and `CLAUDE.md` is ignored too. There, `install.sh project` would add a public `AGENTS.md` that lists `docs/principles.md` and `docs/code-smells.md`, which points public files at private notes (principle 2). It would also add a `.gitattributes` whose `union` line does nothing, since `docs/decisions.md` belongs to the other repository. Found 28 Nov, while checking the commit 9 fixup.
+- **Open:** worktrees and private notes. `git worktree add` checks out only tracked files, so a new worktree of a project with private notes has no `docs/`, `CLAUDE.md` or `AGENTS.md`, and its session starts without the principles. Principle 8's parallel sessions need a way to bring them in, such as a link per worktree.
+- **Open:** the code smells reach the Apple projects through a `CLAUDE.md` link made by hand in the folder above them, which `install.sh` doesn't know about. The clone's rename broke that link unnoticed, so the smells weren't loaded until it was relinked on 28 Nov. Renaming `apple/CLAUDE.md` to `code-smells.md`, as the target layout says, would break it again: keep the name, or have `install.sh` make or check the link.
 
 ## Experiment
 
@@ -152,6 +159,18 @@ The question: does a test writer that works from the spec, before the code exist
 
 | # | Commit | Hash | Maintainer's notes |
 |---|---|---|---|
-| | | | |
+| 1 | `docs: name the repository agent-workflow in the readme` | 007851a | OK as proposed |
+| 2 | `feat: rename the command and its clone to agent-workflow` | 338dd42 | Test fixes kept in the same commit |
+| 3 | `docs: add the plan and the decisions log` | 5ff7ca6 | OK as proposed |
+| 4 | `docs: add templates for a spec, a decisions log and an edge list` | 9511f6d | OK as proposed; templates go to `docs/templates/` on the agent's recommendation |
+| 5 | `refactor: split the global instructions into AGENTS.md and a Claude adapter` | 883b8eb | OK as proposed; `install.sh` run after it to relink `~/.claude` |
+| 6 | `feat: give projects an AGENTS.md that CLAUDE.md imports` | 9c05c91 | OK as proposed |
+| 7 | `feat: put the skills in .agents/skills with a .claude/skills link` | 975abf2 | OK as proposed; Claude Code's discovery through the link checked with `claude -p` |
+| 8 | `docs: one skill per step in the Claude adapter` | 1003235 | OK as proposed; the table, lost from chat, rebuilt and approved |
+| 9 | `feat: rename the principles to docs/principles.md and make them tool-neutral` | cb7f607 | Renamed to `docs/principles.md` on the agent's recommendation; `feat:` instead of the planned `docs:`, since `install.sh` changes. The fixup takes any `docs/CLAUDE.md` for an old copy, since the iOS app's is adapted past recognition; folded in with an autosquash on its own OK (it was 9dcd97e and 27c92d5). Commit 9 with its fixup: OK |
+| 10 | `docs: let the reviewer read the spec first and the Swift skills` | d1841a9 | OK as proposed; `Skill` added to the reviewer's tools. Checked on 28 Nov with a Haiku probe: a subagent with `Skill` in its tools loaded `swiftui-pro:swiftui-pro` and quoted a line of it word for word, one its description doesn't give away; without `Skill` it couldn't |
+| 10a | `feat: keep AGENTS.md and CLAUDE.md private where the notes are` | 6b49f0a | OK as proposed, with the notes after it folded in (it was 3669154); option B (detection) was the maintainer's choice; `CLAUDE.md` and `docs/.git` added on the agent's recommendation |
 
-Next: the open decisions, one at a time, then commit 1.
+Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Branch 2's review (28 Nov), with superpowers' requesting-code-review on Opus 5.5 at high effort, since this repository has no reviewer agent of its own: with fixes, no critical findings. The maintainer had no findings of their own. All ten of the reviewer's were checked against the code and accepted, and fixed as fixups: the `~/.claude/AGENTS.md` link dropped (5); the project templates moved to `core/project/`, with `core/CLAUDE.md` forwarding to the global file (6); one message, not two, for a project set up before the rename (9); the review cadence and a private-notes note in the reviewer (10); `.gitignore` growing before `git init`, the untrack message first, a stale root `union` line, `docs/` not ignored, and the `AGENTS.md` template comment (10a). The reviewer's guess at why the rules loaded twice was wrong: a plugin loaded `~/.claude/AGENTS.md`, not Claude Code's own walk up the folders. The autosquash changed the hashes from commit 5 on; the ledger has the new ones.
+
+Review fixups folded in with an autosquash on the maintainer's OK, tests run at every commit, final tree unchanged. Next: push branch 2 and open its pull request, on the maintainer's OK; then run `agent-workflow` on this Mac to drop the `~/.claude/AGENTS.md` link. The notes changed since commit 10 go in with the next commit. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), 17a's Axiom accessibility copy (branch 4), and two found on 28 Nov under the commits: the code smells' hand-made link, and worktrees with private notes.

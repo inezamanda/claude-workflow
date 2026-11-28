@@ -6,12 +6,18 @@ This is how I work with [Claude Code](https://claude.com/claude-code): the workf
 
 ```
 core/                              for any project
-  CLAUDE.md                        global instructions for every session
+  global/AGENTS.md                 global instructions for every session, any tool
+  global/CLAUDE.md                 Claude Code's part: imports AGENTS.md, then the plugins and skills
+  project/AGENTS.md                a project's root instructions for any tool: what to read, where the notes are
+  project/CLAUDE.md                a project's file for Claude Code: imports AGENTS.md and what it lists
+  CLAUDE.md                        forwards to global/CLAUDE.md, for links made before the global files moved
   principles.md                    how work is planned, proven, reviewed and committed
   CONTRIBUTING.md                  commits, branches and pull requests (a template)
   agents/code-reviewer.md          a read-only reviewer for a whole branch
   github/review.yml                a Claude review of each pull request
   github/pull_request_template.md
+  templates/                       a branch's spec, a decisions log and an edge list
+  skills/README.md                 how a project keeps its own skills, for every tool
   hooks/commit-msg                 Conventional Commits, AI credit allowed or refused
 apple/                             for Swift and SwiftUI apps, on top of core/
   CLAUDE.md                        a code-smell table for Swift
@@ -37,7 +43,7 @@ Or without cloning first, which clones to `~/.agent-workflow` for you:
 curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
 ```
 
-It links `~/.claude/CLAUDE.md` to `core/CLAUDE.md` (moving an old one to a dated backup), puts an `agent-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
+It links `~/.claude/CLAUDE.md` to `core/global/CLAUDE.md` (moving an old one to a dated backup), which imports `AGENTS.md` beside it, puts an `agent-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
 
 **In a new project**, at the root of its repository:
 
@@ -48,16 +54,18 @@ agent-workflow project --apple     # a Swift or SwiftUI app
 
 | Command | Adds |
 | --- | --- |
-| `project` | `docs/CLAUDE.md` (the principles), `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, and a root `CLAUDE.md` that imports them; it also sets `core.hooksPath` |
+| `project` | `docs/principles.md`, `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, the spec, decisions log and edge list templates in `docs/templates/`, a `.gitattributes` that merges `docs/decisions.md` with `union`, `.agents/skills/` for the project's own skills with a `.claude/skills` link to it, a root `AGENTS.md` that lists what to read, for any agent tool, and a root `CLAUDE.md` that imports `AGENTS.md` and the same files; it also sets `core.hooksPath` |
 | `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, the swift-lsp plugin and the three Swift skills |
 
-It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has a `CLAUDE.md` of its own, it prints the import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
+It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has an `AGENTS.md` or `CLAUDE.md` of its own, it prints the files or import lines to add instead; if it has a `.claude/skills` folder, it prints the command that links it. A project set up before the principles were renamed has them as `docs/CLAUDE.md`, so when that file is there it doesn't add `docs/principles.md`; it prints the `git mv` to run and the lines to change.
+
+Where the notes are private, because `docs/` is git-ignored or a repository of its own, `AGENTS.md` and `CLAUDE.md` name private files, so it adds them to `.gitignore`, and it says how to untrack either one if it's already tracked. The `union` line then goes in `docs/.gitattributes`, beside the decisions log. Git-ignored files aren't checked out into a new worktree, so a worktree of such a project needs them brought in by hand. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
 
 `principles.md` describes two levels: **full**, for projects that hold people's data, money or credentials, and **light**, for everything else. Pick one in each plan.
 
 ## The plugins it installs
 
-`core/CLAUDE.md` sets how these work together. Each is someone else's project.
+`core/global/CLAUDE.md` sets how these work together. Each is someone else's project.
 
 - [superpowers](https://github.com/obra/superpowers): skills for brainstorming, planning, debugging and verifying.
 - [caveman](https://github.com/JuliusBrussee/caveman): terse replies in routine chat.
@@ -68,7 +76,7 @@ It never overwrites a file that's already there. With `--apple` it leaves out `d
 
 Optional, not installed: [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian), if you keep project notes in an Obsidian vault.
 
-Without the plugins, the principles and templates still work; drop the plugin section from `core/CLAUDE.md`.
+Without the plugins, the principles and templates still work; drop the plugin section from `core/global/CLAUDE.md`.
 
 ## This repository's own hooks
 

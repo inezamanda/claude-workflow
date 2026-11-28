@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sets up Claude Code on this machine with this workflow. Safe to run again: each step is skipped when done.
 #
-#   install.sh                    the clone, ~/.claude/CLAUDE.md, the plugins and graphify
+#   install.sh                    the clone, ~/.claude/CLAUDE.md and AGENTS.md, the plugins and graphify
 #   install.sh project            the same, then the templates into the current folder
 #   install.sh project --apple    also the Apple coding guide and code smells, swift-lsp and the Swift skills
 #
@@ -35,7 +35,7 @@ find_repo() {
     done
     dir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)"
     new="$HOME/.agent-workflow" old="$HOME/.claude-workflow"
-    if [ -n "$dir" ] && [ -f "$dir/install.sh" ] && [ -f "$dir/core/CLAUDE.md" ]; then
+    if [ -n "$dir" ] && [ -f "$dir/install.sh" ] && [ -f "$dir/core/global/CLAUDE.md" ]; then
         repo="$dir"
     else
         repo="$new"
@@ -112,7 +112,13 @@ graphify_tool() {
 
 machine() {
     update_repo
-    link "$repo/core/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+    link "$repo/core/global/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+    # Claude Code resolves CLAUDE.md's @AGENTS.md from the link's target, core/global/. A link beside it, made
+    # by earlier versions, only loaded the rules a second time through plugins that look for ~/.claude/AGENTS.md.
+    old_agents="$HOME/.claude/AGENTS.md"
+    case "$(readlink "$old_agents" 2>/dev/null)" in
+        */core/global/AGENTS.md) rm "$old_agents" && say "removed the ~/.claude/AGENTS.md link; CLAUDE.md imports it already" ;;
+    esac
     link "$repo/install.sh" "$HOME/.local/bin/agent-workflow"
     # The command was called claude-workflow before the rename; its link only ever pointed at this script.
     old_command="$HOME/.local/bin/claude-workflow"
@@ -160,30 +166,108 @@ project() {
         fail "the templates go at the repository's root; run agent-workflow project in $top"
         return
     fi
-    copy core/principles.md docs/CLAUDE.md
+    # The notes are private when docs/ is a repository of its own or git-ignored. Then AGENTS.md and CLAUDE.md, which
+    # name files in docs/, stay out of the public repository too, and the union line goes in docs/ beside the log.
+    private=0
+    { [ -e docs/.git ] || git check-ignore -q docs/ 2>/dev/null; } && private=1
+
+    # Before the rename the principles were copied as docs/CLAUDE.md, often adapted past recognition, so any
+    # docs/CLAUDE.md is taken for them: renamed by hand, never loaded twice.
+    old_principles=0
+    if [ ! -e docs/principles.md ] && [ -e docs/CLAUDE.md ]; then
+        old_principles=1
+        skip "docs/CLAUDE.md is already there, so the principles weren't added. If it holds them, run git mv docs/CLAUDE.md docs/principles.md, then change docs/CLAUDE.md to docs/principles.md wherever AGENTS.md or CLAUDE.md names it. If it doesn't, copy $repo/core/principles.md to docs/principles.md"
+    else
+        copy core/principles.md docs/principles.md
+    fi
     copy core/CONTRIBUTING.md CONTRIBUTING.md
     copy core/hooks/commit-msg scripts/hooks/commit-msg
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml
     copy core/github/pull_request_template.md .github/pull_request_template.md
-    imports="@CONTRIBUTING.md @docs/CLAUDE.md"
+    copy core/templates/spec.md docs/templates/spec.md
+    copy core/templates/decisions.md docs/templates/decisions.md
+    copy core/templates/edge-list.md docs/templates/edge-list.md
+    copy core/skills/README.md .agents/skills/README.md
+
+    # Every other tool reads skills from .agents/skills; Claude Code reads .claude/skills, so it gets a link.
+    if [ "$(readlink .claude/skills 2>/dev/null)" != ../.agents/skills ]; then
+        if [ -e .claude/skills ] || [ -L .claude/skills ]; then
+            skip ".claude/skills is already there; move its skills to .agents/skills, then run: ln -s ../.agents/skills .claude/skills"
+        else
+            mkdir -p .claude && ln -s ../.agents/skills .claude/skills && say "linked .claude/skills to .agents/skills" ||
+                fail "couldn't link .claude/skills"
+        fi
+    fi
+
+    # Two branches that each add rows to the append-only decisions log then merge without a conflict.
+    attributes=.gitattributes union="docs/decisions.md merge=union"
+    [ "$private" = 1 ] && attributes=docs/.gitattributes union="decisions.md merge=union"
+    if [ ! -e "$attributes" ]; then
+        printf '%s\n' "$union" > "$attributes" && say "added $attributes" || fail "couldn't add $attributes"
+    elif ! grep -qxF "$union" "$attributes"; then
+        skip "$attributes is already there; add this line to it to merge the decisions log:"
+        printf '  %s\n' "$union" >&2
+    fi
+
+    reads="CONTRIBUTING.md docs/principles.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md
-        imports="@CONTRIBUTING.md @CODING.md @docs/CLAUDE.md"
+        reads="CONTRIBUTING.md CODING.md docs/principles.md"
         if smells="$(above apple/CLAUDE.md)"; then
             skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
         else
             copy apple/CLAUDE.md docs/code-smells.md
-            imports="$imports @docs/code-smells.md"
+            reads="$reads docs/code-smells.md"
         fi
     fi
 
-    # A CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.
-    if [ ! -e CLAUDE.md ]; then
-        printf '%s\n' $imports > CLAUDE.md && say "added CLAUDE.md, which imports the others" || fail "couldn't add CLAUDE.md"
+    # Before AGENTS.md and CLAUDE.md are written or checked, so an untrack message comes before any list of
+    # private files to add to them.
+    if [ "$private" = 1 ]; then
+        for f in AGENTS.md CLAUDE.md; do
+            # check-ignore fails outside a repository, so the line itself is looked for too.
+            if ! grep -qxF "/$f" .gitignore 2>/dev/null && ! git check-ignore -q --no-index "$f" 2>/dev/null; then
+                # A last line without a newline would run into the new one.
+                [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
+                printf '/%s\n' "$f" >> .gitignore && say "added /$f to .gitignore, since it names the private notes" ||
+                    fail "couldn't add /$f to .gitignore"
+            fi
+            git ls-files --error-unmatch "$f" >/dev/null 2>&1 &&
+                skip "$f is tracked, but where the notes are private it mustn't be; untrack it first with: git rm --cached $f"
+        done
+        [ -e docs/.git ] && ! git check-ignore -q docs/ 2>/dev/null &&
+            skip "docs/ is a repository of its own; add /docs/ to .gitignore, or git records it here as an embedded repository"
+        grep -qxF "docs/decisions.md merge=union" .gitattributes 2>/dev/null &&
+            skip "the root .gitattributes still merges the decisions log, which is in the private notes now; remove its line docs/decisions.md merge=union"
+    fi
+
+    # An AGENTS.md or CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.
+    # Every tool reads AGENTS.md, which says what to read; Claude Code reads CLAUDE.md, which imports the same files.
+    if [ ! -e AGENTS.md ]; then
+        list="$(printf '%s\n' $reads | sed 's/.*/- `&`/')" awk '
+            $0 == "<!-- files to read -->" { print ENVIRON["list"]; next }
+            { print }' "$repo/core/project/AGENTS.md" > AGENTS.md && say "added AGENTS.md, which lists what to read" ||
+            fail "couldn't add AGENTS.md"
     else
         missing=""
-        for line in $imports; do
+        for f in $reads; do
+            # The rename above gives this one.
+            [ "$old_principles" = 1 ] && [ "$f" = docs/principles.md ] && continue
+            grep -qF "$f" AGENTS.md || missing="$missing $f"
+        done
+        if [ -n "$missing" ]; then
+            skip "AGENTS.md is already there; add these to the files it says to read:"
+            printf '  %s\n' $missing >&2
+        fi
+    fi
+    if [ ! -e CLAUDE.md ]; then
+        { cat "$repo/core/project/CLAUDE.md" && printf '@%s\n' $reads; } > CLAUDE.md &&
+            say "added CLAUDE.md, which imports AGENTS.md and the others" || fail "couldn't add CLAUDE.md"
+    else
+        missing=""
+        for line in @AGENTS.md $(printf '@%s ' $reads); do
+            [ "$old_principles" = 1 ] && [ "$line" = @docs/principles.md ] && continue
             grep -qxF "$line" CLAUDE.md || missing="$missing $line"
         done
         if [ -n "$missing" ]; then
