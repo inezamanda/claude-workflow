@@ -171,7 +171,7 @@ fresh five && mkdir -p "$work/p1" && cd "$work/p1" && git init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project succeeds" [ $? -eq 0 ]
 for f in AGENTS.md docs/principles.md CONTRIBUTING.md scripts/hooks/commit-msg scripts/hooks/pre-commit \
-    scripts/hooks/checks.sh scripts/hooks/scrub.sh .claude/agents/code-reviewer.md \
+    scripts/hooks/checks.sh scripts/hooks/scrub.sh scripts/hooks/post-checkout .claude/agents/code-reviewer.md \
     .github/workflows/review.yml .github/pull_request_template.md \
     docs/templates/spec.md docs/templates/decisions.md docs/templates/edge-list.md .agents/skills/README.md; do
     check "project adds $f" [ -f "$f" ]
@@ -186,7 +186,7 @@ check "project's AGENTS.md lists CONTRIBUTING.md and docs/principles.md to read"
 check "project's AGENTS.md has no marker left" sh -c "! grep -q 'files to read' AGENTS.md"
 check "project's CLAUDE.md imports AGENTS.md, then CONTRIBUTING.md and docs/principles.md" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@docs/principles.md')" ]
-check "project: adds the hooks" sh -c "[ -x scripts/hooks/commit-msg ] && [ -x scripts/hooks/pre-commit ] && [ -x scripts/hooks/scrub.sh ] && cmp -s scripts/hooks/checks.sh '$src/core/hooks/checks.sh'"
+check "project: adds the hooks" sh -c "[ -x scripts/hooks/commit-msg ] && [ -x scripts/hooks/pre-commit ] && [ -x scripts/hooks/scrub.sh ] && [ -x scripts/hooks/post-checkout ] && cmp -s scripts/hooks/checks.sh '$src/core/hooks/checks.sh'"
 check "project: adds CODEOWNERS" cmp -s .github/CODEOWNERS "$src/core/github/CODEOWNERS"
 check "project: adds settings.json with the hook" sh -c "cmp -s .claude/settings.json '$src/core/claude/settings.json' && [ -x .claude/hooks/protected-edit.sh ]"
 check "project: says how to make the scrub list" grep -qF ".git/info/scrub-words" "$work/out"
@@ -464,7 +464,7 @@ check "it says to set core.hooksPath after git init" grep -q "after git init" "$
 mkdir -p "$work/p5" && cd "$work/p5" && git init -q && git config core.hooksPath .githooks || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "a hooksPath of the project's own is kept" [ "$(git config core.hooksPath)" = .githooks ]
-check "project: names every hook to move" sh -c "grep 'core.hooksPath is already' '$work/out' | grep 'commit-msg' | grep 'pre-commit' | grep 'checks.sh' | grep -q 'scrub.sh'"
+check "project: names every hook to move" sh -c "grep 'core.hooksPath is already' '$work/out' | grep 'commit-msg' | grep 'pre-commit' | grep 'checks.sh' | grep 'scrub.sh' | grep -q 'post-checkout'"
 
 # Refusals
 mkdir -p "$work/p1/sub" && cd "$work/p1/sub" && PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1

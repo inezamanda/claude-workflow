@@ -397,23 +397,102 @@ Sizes count non-test lines added and removed; a pure copy counts nothing.
 - [x] Every commit has a size, none over about 200.
 - [x] The docs to update are listed.
 
+**Branch 4a, `feat/worktree-notes`**
+
+Spec for this branch, planned 28 Nov on `main` (b548f60), after PR #4, and approved by the maintainer the same day. It closes the two open items found on 28 Nov, before branch 5's experiment, which runs in two worktrees of the iOS app (decisions, 28 Nov). First, a new worktree of a project with private notes links `docs/`, `AGENTS.md` and `CLAUDE.md` from the main worktree. Second, `install.sh project --apple` says when the code smells' `CLAUDE.md` link above the project is broken. Each design is the smallest that works.
+
+Facts checked on `main` (b548f60), 28 Nov 2026; "tried" means in a scratch repository by the planning session:
+
+- `git worktree add` checks out only tracked files, so the ignored `docs/`, `AGENTS.md` and `CLAUDE.md` of a private-notes project are missing from a new worktree (the **Open** item below). In the iOS app, `.gitignore` ignores `/docs/`, `/CLAUDE.md` and all of `/.claude/` (app's `.gitignore:58-62`). Its `CLAUDE.md` imports `CONTRIBUTING.md`, `CODING.md` and `docs/CLAUDE.md`. It has no `AGENTS.md`. Its `core.hooksPath` is `scripts/hooks`, which holds its own `commit-msg`, `post-commit`, `pre-commit` and `pre-push`, and no `post-checkout`.
+- Tried: `post-checkout` runs on `git worktree add`, for a worktree inside the main one (`build/a`) and for a sibling (`../sib`). It gets `0000000000000000000000000000000000000000 <new HEAD> 1`, its folder is the new worktree, and `GIT_DIR` isn't set. There `git rev-parse --git-dir` is `.git/worktrees/<name>` and `--git-common-dir` is the main `.git`.
+- Tried: a link named `docs` shows as `?? docs` in `git status`, despite `/docs/` in `.gitignore`, since git doesn't count a link as a folder. `git check-ignore docs/` then stops with "beyond a symbolic link". A `/docs` line in `info/exclude` hides it. `git rev-parse --git-path info/exclude` gives the main `.git/info/exclude` in every worktree, so one line covers them all. Links named `AGENTS.md` and `CLAUDE.md` are hidden by `/AGENTS.md` and `/CLAUDE.md`.
+- Tried: `docs/.git` exists through the link, so `checks.sh` still finds the notes private there. `pre-commit` refuses a staged path named `docs` in any mode, a link included (the Private notes row in Branch 3's design review).
+- `install.sh project` copies the hooks with `guard`, in the loop at `install.sh:256`. `guard` copies a missing file, and warns when a kept copy differs (`install.sh:196-200`). The `core.hooksPath` message names the hooks (`install.sh:410`). The main worktree's path is the first line of `git worktree list --porcelain` (`install.sh:110`).
+- Claude Code makes its worktrees in `<repository>/.claude/worktrees/<name>/` ([worktrees](https://code.claude.com/docs/en/worktrees)). The docs don't say whether `post-checkout` runs there. Its `.worktreeinclude` copies ignored files into Claude's own worktrees only. `worktree.symlinkDirectories` links folders only ([settings](https://code.claude.com/docs/en/settings-reference)). Claude Code loads `CLAUDE.md` from every folder above the working one, and an `@` import resolves from the importing file ([memory](https://code.claude.com/docs/en/memory)). So a worktree inside the main one may load the main `CLAUDE.md` as well as its own link. Not checked: a `claude -p` probe saw no `CLAUDE.md` even in the main checkout, so it proved nothing.
+- The iOS app keeps its own `scripts/hooks/pre-commit`, which `guard` never replaces. Its private-files pattern is `^(docs/|\.claude/|graphify-out/|CLAUDE\.md$)` (app's `scripts/hooks/pre-commit:22`, and again in `scripts/ci-checks.sh:24`), so it misses a staged link named `docs` or `.claude`. Found by the spec review; the app's fix is a step of branch 5's setup, not this branch.
+- The code smells reach the Apple projects through `~/Developer/iOSDev/CLAUDE.md`, a link made by hand to the clone's `apple/CLAUDE.md`. `above` walks up from the project and takes the first `CLAUDE.md` with the smells' text (`install.sh:217-226`). `-f` is false for a broken link, so `above` skips it, and `--apple` then copies `docs/code-smells.md` (`install.sh:345-350`). Nothing reports the broken link.
+
+Level: **light**. The hook adds no guard: the existing `docs` refusal in `pre-commit` stays the guard, and a test shows it still refuses the link. Hook and `install.sh` tests are shown failing first. Effort: **S**, two commits. Implementer: Sonnet 5.5 high, in a fresh session. Reviewer: Opus 5.5 high, for the spec and the branch.
+
+**Design review**
+
+| Decision | Chosen | Rejected, and why | Who |
+|---|---|---|---|
+| How a worktree gets the private notes | A `post-checkout` hook in `core/hooks/`, installed with the others. Its own git-ignored `docs/`, `AGENTS.md` and `CLAUDE.md` are linked from the main worktree. It runs on any tool's worktrees, and on hand-made ones. | `agent-workflow worktree` run by hand: forgotten, and that fails silently. Claude's `.worktreeinclude`: Claude only, and copies of the notes drift apart. `worktree.symlinkDirectories`: folders only, Claude only. A `WorktreeCreate` hook: it replaces git's own worktree step. | maintainer, 28 Nov |
+| What it links | Only what `install.sh` makes private: `docs`, `AGENTS.md`, `CLAUDE.md`. Each only when the main worktree has it, the new one doesn't, and git ignores it. | `.claude/agents` and `.claude/skills` too: `install.sh` never makes them private. The iOS app ignores all of `.claude/`, so for the experiment it tracks them or links them by hand. | maintainer, 28 Nov |
+| Hiding the `docs` link | The hook adds `/docs` to the repository's `info/exclude`, shared by every worktree, unless the line is there. | `/docs` in place of `/docs/` in `.gitignore`: projects set up already have `/docs/`, which `ignore` accepts (`install.sh:208`). Nothing: `git status` shows `?? docs` in every worktree, and `git add -A` makes `pre-commit` refuse. | agent |
+| When it runs | Only when the old HEAD is all zeros, tested by length (`case $1 in *[!0]*) exit 0;; esac`), since sha256's null id has 64. That's a new worktree or a clone. In a clone, or in the main worktree, "the main worktree has it and this one lacks it" can't both be true, so no `--git-dir` check is needed. The ignore check runs on `docs/`, with the slash, before the link is made. `info/` is made first, since a repository from `--template=` has none. It always exits 0, since its exit status becomes `git worktree add`'s. A link that fails is reported. | On every checkout: it would bring back a link someone removed on purpose. | agent |
+| The code smells link | When a `CLAUDE.md` above the project is a broken link whose target ends in `/apple/CLAUDE.md` (`case "$(readlink …)"`), `--apple` names it and prints `ln -sf <clone>/apple/CLAUDE.md <link>`. It doesn't copy `docs/code-smells.md`, since the relinked file would load them twice. | Drop the link and copy instead: the copies don't follow later edits. `--apple` makes the link: it would need to know the folder, which means a new argument. | maintainer, 28 Nov; not copying: agent |
+| `apple/CLAUDE.md`'s name | Kept. The target layout's rename to `code-smells.md` would break the link again. | Rename it in this branch: out of scope. | agent |
+
+Left out: a check in the plain `agent-workflow` run, which doesn't know where the link is. So a broken smells link is caught only when `--apple` runs.
+
+**Checked first** (commit 21, in the maintainer's own terminal, on their OK): in a scratch project with private notes, start `claude --worktree x`. Check that the three links are there, which shows `post-checkout` ran. Run `/memory`, and check whether `CLAUDE.md` loads once or twice. If twice, the hook leaves `CLAUDE.md` out for a worktree inside the main one, a one-line `case`. Branch 5's experiment can then use Claude's worktrees or hand-made ones.
+
+**Tests**
+
+| Commit | Test | Mutation it catches |
+|---|---|---|
+| 21 | `post-checkout: a new worktree links docs, AGENTS.md and CLAUDE.md` | a name dropped from the list |
+| 21 | `post-checkout: a sibling worktree gets the links too` | the main worktree taken as the folder above, not from `git worktree list` |
+| 21 | `post-checkout: the docs link doesn't show in git status` | the `info/exclude` line dropped |
+| 21 | `post-checkout: a second worktree doesn't add the exclude line again` | the `grep` before the append dropped |
+| 21 | `post-checkout: a commit of the docs link is still refused` | `pre-commit`'s link-mode match dropped |
+| 21 | `post-checkout: an AGENTS.md that isn't ignored isn't linked` (untracked in the main worktree) | the ignore check dropped |
+| 21 | `post-checkout: a checkout in a linked worktree doesn't bring back a removed link` (`rm AGENTS.md`, then `git checkout`) | the all-zeros check dropped |
+| 21 | `post-checkout: a sha256 repository's new worktree gets the links` | a 40-zero literal in place of the length-free test |
+| 21 | `post-checkout: a repository without info/ gets the exclude line` | the `mkdir -p` dropped |
+| 21 | the existing `project: adds the hooks` (`scripts/test-install.sh:174`, `:189`) checks `post-checkout` too, executable | the name missing from `install.sh:256`; the file committed without its mode |
+| 21 | the existing `project: names every hook to move` (`scripts/test-install.sh:467`) checks `post-checkout` | `install.sh:410` unchanged |
+| 22 | `project --apple under a broken code smells link says how to relink it` | the broken-link check dropped |
+| 22 | `project --apple under a broken code smells link doesn't copy them` | it falls through to `copy` |
+| 22 | `project --apple under an unrelated broken CLAUDE.md link copies the smells` | the target's `/apple/CLAUDE.md` test dropped |
+
+Both suites run under `sh` and `dash`. `git worktree add` runs the hook through its `#!/bin/sh` line, which ignores `SH` (`scripts/test-hooks.sh:45`, `:100`), so the tests point `core.hooksPath` at a wrapper that runs `exec ${SH:-sh} <core>/post-checkout "$@"`.
+
+**Commits**
+
+21. `feat: link the private notes into a new worktree`: `core/hooks/post-checkout`, `install.sh:256` and `:410`, the README, and the checks above. ~35, S.
+22. `fix(apple): say when the code smells link above is broken`: a broken-link check beside `above`, and the README. ~12, S.
+
+**Proof**
+
+- Both test suites pass under `sh` and `dash` at each commit.
+- The check above, run by the maintainer.
+- After the merge: `agent-workflow project --apple` in the iOS app, which adds `scripts/hooks/post-checkout`. Then a worktree of it shows `docs/` with `docs/.git`, and `git status` there is clean.
+
+**Docs to update**
+
+- `README.md`: `post-checkout` in the file tree (`:26-29`), with `checks.sh`'s "shared by both hooks" (`:28`) reworded, and in the `project` row (`:69`). The "brought in by hand" sentence (`:74`) says the hook links them. The broken smells link (`:72`).
+- `docs/decisions.md`: the decisions above (three rows, plus one for the single review round).
+- `docs/plan-revision.md`: this spec, the two **Open** items marked decided, and the ledger.
+
+**Ready for review**
+
+- [x] Every claim about existing code has a `path:line`, read at b548f60 (the app's files at 6ec4ea4).
+- [x] Every test names the mutation it catches.
+- [x] Every decision names who made it. The agent's rows wait on the maintainer's approval of this spec.
+- [x] The edge list is in the tests table.
+- [x] Every commit has a size, none over about 200.
+- [x] The docs to update are listed.
+
 **Branch 5, `feat/agent-experiment`**
 
 18. `feat: add the test-writer and test-runner agents`. ~100, M.
 19. `docs: describe the experiment and its results table`. ~80, S.
 20. `docs: describe the layout, the tools and the guardrails in the readme`: the file tree also lists `docs/` as this repository's own plan and decisions, not copied into projects. ~80, S.
 
-Also open: whether this repository gets its own root `AGENTS.md` and `CLAUDE.md`, and whether graphify's `post-commit` refresh joins `core/`.
+Dropped (decisions, 28 Nov): this repository's own root `AGENTS.md` and `CLAUDE.md`, and graphify's `post-commit` refresh in `core/`.
 
 - **Decided (commit 10a):** what `install.sh project` writes where a project's notes are private. In the iOS app, `docs/` is a private repository of its own, ignored by the app's `.gitignore`, and `CLAUDE.md` is ignored too. There, `install.sh project` would add a public `AGENTS.md` that lists `docs/principles.md` and `docs/code-smells.md`, which points public files at private notes (principle 2). It would also add a `.gitattributes` whose `union` line does nothing, since `docs/decisions.md` belongs to the other repository. Found 28 Nov, while checking the commit 9 fixup.
-- **Open:** worktrees and private notes. `git worktree add` checks out only tracked files, so a new worktree of a project with private notes has no `docs/`, `CLAUDE.md` or `AGENTS.md`, and its session starts without the principles. Principle 8's parallel sessions need a way to bring them in, such as a link per worktree.
-- **Open:** the code smells reach the Apple projects through a `CLAUDE.md` link made by hand in the folder above them, which `install.sh` doesn't know about. The clone's rename broke that link unnoticed, so the smells weren't loaded until it was relinked on 28 Nov. Renaming `apple/CLAUDE.md` to `code-smells.md`, as the target layout says, would break it again: keep the name, or have `install.sh` make or check the link.
+- **Decided (commit 21, Branch 4a):** worktrees and private notes. `git worktree add` checks out only tracked files, so a new worktree of a project with private notes has no `docs/`, `CLAUDE.md` or `AGENTS.md`, and its session starts without the principles. Principle 8's parallel sessions need a way to bring them in, such as a link per worktree.
+- **Decided (commit 22, Branch 4a):** the code smells reach the Apple projects through a `CLAUDE.md` link made by hand in the folder above them, which `install.sh` doesn't know about. The clone's rename broke that link unnoticed, so the smells weren't loaded until it was relinked on 28 Nov. Renaming `apple/CLAUDE.md` to `code-smells.md`, as the target layout says, would break it again: keep the name, or have `install.sh` make or check the link.
 
 ## Experiment
 
 The question: does a test writer that works from the spec, before the code exists, give better tests and less rework for the tokens it costs?
 
-- **Setup:** two small logic features in the iOS app, each with an approved spec, built twice from the same base commit in two worktrees. Run A is the current setup: the session writes tests and code, and one reviewer runs at the end. Run B adds the test writer and the test runner. The order is swapped for the second feature.
+- **Setup:** two small logic features in the iOS app, each with an approved spec, built twice from the same base commit in two worktrees, made with `git worktree add` beside the app, since `claude --worktree` doesn't run `post-checkout` (decisions, 28 Nov). Run A is the current setup: the session writes tests and code, and one reviewer runs at the end. Run B adds the test writer and the test runner. The order is swapped for the second feature. The app ignores all of `.claude/`, which the `post-checkout` hook doesn't link, so right after each worktree is made: `ln -s <the app's main worktree>/.claude .claude && echo /.claude >> "$(git rev-parse --git-path info/exclude)"`, since `/.claude/` doesn't match a link (decisions, 28 Nov). Before the first run, the app's private-files pattern (`scripts/hooks/pre-commit:22`, `scripts/ci-checks.sh:24`) also matches `docs` and `.claude` as a link: `^(docs(/|$)|\.claude(/|$)|graphify-out/|CLAUDE\.md$)`. Parallel sessions share the one `docs/` through their links, so each writes only its own spec and notes file.
 - **Record per run:** tokens (main session and subagents), time from approved spec to last commit, the maintainer's findings per commit, the reviewer's findings by severity, rework (fixup commits and the lines they change), and whether a test fails when the code is broken on purpose.
 - **Decide beforehand:** what result keeps the test writer. **Open**, for the maintainer.
 - **Limit:** four runs show a direction, not proof. The maintainer reviews the second run already knowing the code, so wait a day between runs.
@@ -483,3 +562,5 @@ After the fix, the maintainer's run in a third scratch project, in their own ter
 Branch 4's review (28 Nov), with superpowers' requesting-code-review on Opus 5.5 at high effort, fresh context: with fixes, no critical findings; both suites run by the reviewer under `sh` and `dash`. Checked in this session against the code, and fixed in one commit: the README missed the configs, the hook, the workflow and SwiftLint from Homebrew (on the spec's own list); `install.sh`'s fallback for `root` never ran, since `cd /..` succeeds, so outside a repository each run installed the plugin again (now the first line of `git worktree list --porcelain`, else this folder; a test runs it twice); the shown command's `kind` and `mode` are compared too, and a missing sha is a failed install; a `sed -i ''` that only BSD sed takes, in `test-hooks.sh`; `git diff-files` in place of `git diff` in `pre-commit-swift`, as `checks.sh` promises plumbing; the usage text; ledger row 17b. Not taken: a list of allowed fields in the shown command (harmless new fields would refuse the install); a test for a `checks-swift.yml` without an image (the guard covers it); the "3k" in the decisions row, which the notes correct. The reviewer's "declined to judge" items need nothing.
 
 After branch 4 (maintainer, 28 Nov): a small branch for two open items, worktrees of projects with private notes, which branch 5's experiment needs since it runs in two worktrees, and `install.sh --apple` making or checking the code smells' `CLAUDE.md` link; then branch 5, whose experiment runs only after it. Dropped: this repository's own `AGENTS.md` and `CLAUDE.md`, and graphify's `post-commit` refresh in `core/`. Keep each design the smallest that works.
+
+Branch 4a planned on 28 Nov, in a session on Opus 5.5, on `main` (b548f60). The maintainer chose the `post-checkout` hook, leaving `.claude/` out, and the broken-link check for the smells. The spec is under Branch 4a. Spec review (Opus 5.5, high, fresh context; about 100k tokens), one round only, since the branch is S (maintainer, 28 Nov): no musts, six shoulds, five nits. The app's `pre-commit` pattern and the cited test lines were checked in the planning session. All were accepted and fixed in the spec. The app's pattern fix and the `.claude` exclude line go in branch 5's setup. The `--git-dir` check was dropped as dead code. Spec approved by the maintainer on 28 Nov. Commit 21 built on `feat/worktree-notes` from `main`, in a session on Sonnet 5.5: `core/hooks/post-checkout`, the nine tests and the three changed `install.sh` tests, shown failing first; both suites pass under `sh` and `dash`, and four mutants from the tests table were caught. The check, in the maintainer's terminal: `claude --worktree x` got no links, since Claude Code makes its worktree with `--no-checkout` and a `git reset --hard`, and git runs `post-checkout` for neither (reflog: `reset: moving to HEAD`). A hand-made `git worktree add` of the same repository got all three links and a clean `git status`. The maintainer chose hand-made worktrees and no second way in; the README says so. Whether `CLAUDE.md` loads twice in a worktree inside the main one is moot then, since the experiment's worktrees are siblings. Next: commit 21 with these notes, then commit 22.

@@ -169,6 +169,39 @@ pf="$work/pf" && fixture "$pf" && git init -q "$pf/docs" && git -C "$pf/docs" co
     git -C "$pf" add -A 2>/dev/null || exit 1
 expect -m 'unstage: .*docs ' refuse "private: first commit with the docs gitlink" pre_commit "$pf"
 
+# core/hooks/post-checkout, run by git worktree add. git runs a hook through its #! line, which ignores SH, so the
+# repositories' hooks folder holds a wrapper that runs it with SH.
+mkdir -p "$work/pcwrap" &&
+    printf '#!/bin/sh\nexec ${SH:-sh} "%s" "$@"\n' "$root/core/hooks/post-checkout" > "$work/pcwrap/post-checkout" &&
+    chmod +x "$work/pcwrap/post-checkout" || exit 1
+# notes <repository> <ignored names> [git init options]: one commit of a .gitignore that lists the names, the three
+# notes beside it untracked, and the wrapper as its hooks.
+notes() {
+    git init -q $3 "$1" && printf "$2" > "$1/.gitignore" && mkdir "$1/docs" && echo p > "$1/docs/principles.md" &&
+        echo a > "$1/AGENTS.md" && echo c > "$1/CLAUDE.md" && git -C "$1" add .gitignore &&
+        git -C "$1" commit -qm init && git -C "$1" config core.hooksPath "$work/pcwrap" || exit 1
+}
+all='/docs/\n/AGENTS.md\n/CLAUDE.md\n'
+# linked <worktree>: docs, AGENTS.md and CLAUDE.md are links that resolve, and the notes read through docs.
+linked() { for f in docs AGENTS.md CLAUDE.md; do [ -L "$1/$f" ] && [ -e "$1/$f" ] || return 1; done && [ -f "$1/docs/principles.md" ]; }
+clean() { [ -z "$(git -C "$1" status --porcelain)" ]; }
+nw="$work/nw" && notes "$nw" "$all" && git -C "$nw" worktree add -q "$nw/a" 2>/dev/null || exit 1
+expect pass "post-checkout: a new worktree links docs, AGENTS.md and CLAUDE.md" linked "$nw/a"
+expect pass "post-checkout: the docs link doesn't show in git status" clean "$nw/a"
+git -C "$nw" worktree add -q "$work/nw-sib" 2>/dev/null || exit 1
+expect pass "post-checkout: a sibling worktree gets the links too" linked "$work/nw-sib"
+expect pass "post-checkout: a second worktree doesn't add the exclude line again" [ "$(grep -cxF /docs "$nw/.git/info/exclude")" -eq 1 ]
+git -C "$nw/a" add -f docs || exit 1
+expect -m 'unstage: docs ' refuse "post-checkout: a commit of the docs link is still refused" pre_commit "$nw/a"
+git -C "$nw/a" reset -q && rm "$nw/a/AGENTS.md" && git -C "$nw/a" checkout -q -b other || exit 1
+expect pass "post-checkout: a checkout in a linked worktree doesn't bring back a removed link" sh -c "[ ! -e '$nw/a/AGENTS.md' ] && [ ! -L '$nw/a/AGENTS.md' ]"
+ni="$work/ni" && notes "$ni" '/docs/\n/CLAUDE.md\n' && git -C "$ni" worktree add -q "$ni/a" 2>/dev/null || exit 1
+expect pass "post-checkout: an AGENTS.md that isn't ignored isn't linked" sh -c "[ ! -e '$ni/a/AGENTS.md' ] && [ ! -L '$ni/a/AGENTS.md' ] && [ -L '$ni/a/CLAUDE.md' ]"
+n256="$work/n256" && notes "$n256" "$all" --object-format=sha256 && git -C "$n256" worktree add -q "$n256/a" 2>/dev/null || exit 1
+expect pass "post-checkout: a sha256 repository's new worktree gets the links" linked "$n256/a"
+nt="$work/nt" && notes "$nt" "$all" --template= && [ ! -e "$nt/.git/info" ] && git -C "$nt" worktree add -q "$nt/a" 2>/dev/null || exit 1
+expect pass "post-checkout: a repository without info/ gets the exclude line" clean "$nt/a"
+
 # Notes public: no ignored docs/, no docs repository
 pp="$work/pp" && fixture "$pp" && git -C "$pp" commit -qm init && mkdir "$pp/docs" && echo x > "$pp/docs/x.md" &&
     echo a > "$pp/AGENTS.md" && git -C "$pp" add docs/x.md || exit 1

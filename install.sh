@@ -253,7 +253,7 @@ project() {
     copy core/CONTRIBUTING.md CONTRIBUTING.md
     grep -q '^- \*\*Types:\*\*' CONTRIBUTING.md 2>/dev/null ||
         skip "CONTRIBUTING.md has no \"- **Types:**\" line, so scripts/hooks/commit-msg refuses every commit; add one that lists the types in backticks, as $repo/core/CONTRIBUTING.md does"
-    for f in commit-msg pre-commit checks.sh scrub.sh; do
+    for f in commit-msg pre-commit post-checkout checks.sh scrub.sh; do
         guard "core/hooks/$f" "scripts/hooks/$f"
     done
     # CI runs the hooks again on every commit of a pull request, which kept hooks from before CI would fail.
@@ -407,7 +407,7 @@ project() {
             git config core.hooksPath scripts/hooks && say "set core.hooksPath to scripts/hooks" || fail "couldn't set core.hooksPath"
         elif [ "$hooks" != scripts/hooks ]; then
             swift="" && [ "$apple" = 1 ] && swift=", pre-commit-swift"
-            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit$swift, checks.sh and scrub.sh there to use them"
+            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit$swift, post-checkout, checks.sh and scrub.sh there to use them"
         fi
         list="$(git rev-parse --git-path info/scrub-words)"
         grep -q '[^[:space:]]' "$list" 2>/dev/null ||
