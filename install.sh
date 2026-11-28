@@ -181,6 +181,8 @@ project() {
         copy core/principles.md docs/principles.md
     fi
     copy core/CONTRIBUTING.md CONTRIBUTING.md
+    grep -q '^- \*\*Types:\*\*' CONTRIBUTING.md 2>/dev/null ||
+        skip "CONTRIBUTING.md has no \"- **Types:**\" line, so scripts/hooks/commit-msg refuses every commit; add one that lists the types in backticks, as $repo/core/CONTRIBUTING.md does"
     copy core/hooks/commit-msg scripts/hooks/commit-msg
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml

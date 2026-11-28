@@ -21,6 +21,9 @@ src="$work/src"
 mkdir -p "$src" && (cd "$root" && git ls-files -co --exclude-standard | while read -r f; do
     mkdir -p "$src/$(dirname "$f")" && cp -p "$f" "$src/$f"
 done)
+# From here, git reads none of the maintainer's config: no global or system file, no global excludes.
+mkdir -p "$work/xdg" && : > "$work/gitconfig" || exit 1
+export GIT_CONFIG_GLOBAL="$work/gitconfig" XDG_CONFIG_HOME="$work/xdg" GIT_CONFIG_NOSYSTEM=1
 git -C "$src" init -q && git -C "$src" add -A && git -C "$src" -c user.name=t -c user.email=t@t commit -qm init
 
 # Fakes. claude keeps its plugins and marketplaces in $STATE; uv "installs" a graphify that installs a skill.
@@ -161,6 +164,7 @@ check "project's commit-msg hook is executable" [ -x scripts/hooks/commit-msg ]
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
 check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
+check "project with the template's CONTRIBUTING.md doesn't warn about its types" sh -c "! grep -q 'Types:' '$work/out'"
 echo mine > docs/principles.md
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "a second project run keeps an edited template" [ "$(cat docs/principles.md)" = mine ]
@@ -273,6 +277,12 @@ check "it says to remove the old union line from the root .gitattributes" grep -
 lines="$(wc -l < .gitignore)"
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "with AGENTS.md still tracked, a second run adds nothing to .gitignore" [ "$(wc -l < .gitignore)" -eq "$lines" ]
+
+# A CONTRIBUTING.md of the project's own without a Types line is kept, with a warning: commit-msg refuses every commit
+mkdir -p "$work/p13" && cd "$work/p13" && git init -q && echo '# How we work' > CONTRIBUTING.md || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: keeps a CONTRIBUTING.md without a Types line" [ "$(cat CONTRIBUTING.md)" = '# How we work' ]
+check "project: warns when CONTRIBUTING.md has no Types line" grep -q 'Types:' "$work/out"
 
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1

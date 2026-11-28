@@ -1,10 +1,10 @@
 #!/bin/sh
 # Checks a commit message: Conventional Commits (`type(scope): subject`), a subject of at most 100
 # characters (aim for 72) with no full stop, and, where ALLOW_AI_CREDIT is 0, no AI attribution.
+# The types and scopes are the names in backticks on the "- **Types:**" and "- **Scopes:**" lines of the root
+# CONTRIBUTING.md, as it is staged, so a commit can add a scope and use it. With no scopes listed, any passes.
 # Copy it into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
-# Keep TYPES the same as the list in CONTRIBUTING.md.
 
-TYPES='feat|fix|test|refactor|docs|style|build|ci|chore|perf'
 # 0 refuses a message that credits an AI (a Co-Authored-By trailer or a "Generated with" line). Match CONTRIBUTING.md.
 ALLOW_AI_CREDIT=1
 
@@ -17,11 +17,37 @@ refuse() {
     fail=1
 }
 
+# names <label>: the names in backticks on CONTRIBUTING.md's "- **<label>:**" line, HTML comments dropped.
+names() {
+    printf '%s\n' "$contributing" | awk -v label="- **$1:**" 'index($0, label) == 1 {
+        while ((i = index($0, "<!--")) > 0) {
+            rest = substr($0, i + 4)
+            j = index(rest, "-->")
+            $0 = substr($0, 1, i - 1) (j ? substr(rest, j + 3) : "")
+        }
+        print
+        exit
+    }' | grep -o '`[a-z0-9-]*`' | tr -d '`' | tr '\n' ' ' | sed 's/ $//'
+}
+staged=0 types="" scopes=""
+if contributing="$(git cat-file blob :CONTRIBUTING.md 2>/dev/null)"; then
+    staged=1 types="$(names Types)" scopes="$(names Scopes)"
+fi
+
 if [ -z "$subject" ]; then
     refuse "the message is empty"
 elif ! printf '%s\n' "$subject" | grep -Eq '^(Merge |Revert "|(fixup|squash|amend)! )'; then
-    printf '%s\n' "$subject" | grep -Eq "^($TYPES)(\([a-z0-9-]+\))?!?: [^ ]" ||
-        refuse "the subject isn't \"type(scope): subject\" with one of: $(echo "$TYPES" | tr '|' ' ')"
+    if [ "$staged" = 0 ]; then
+        refuse "there's no CONTRIBUTING.md in the commit; its \"- **Types:**\" line lists the commit types"
+    elif [ -z "$types" ]; then
+        refuse "CONTRIBUTING.md has no \"- **Types:**\" line that lists the commit types in backticks"
+    elif ! printf '%s\n' "$subject" | grep -Eq "^($(echo "$types" | tr ' ' '|'))(\([a-z0-9-]+\))?!?: [^ ]"; then
+        refuse "the subject isn't \"type(scope): subject\" with one of: $types"
+    else
+        scope="$(printf '%s\n' "$subject" | sed -n 's/^[a-z0-9-]*(\([a-z0-9-]*\)).*/\1/p')"
+        [ -n "$scope" ] && [ -n "$scopes" ] && ! printf ' %s ' "$scopes" | grep -qF " $scope " &&
+            refuse "the scope \"$scope\" isn't one of CONTRIBUTING.md's: $scopes"
+    fi
     case "$subject" in *.) refuse "the subject ends with a full stop" ;; esac
     length=${#subject}
     if [ "$length" -gt 100 ]; then

@@ -32,7 +32,7 @@ How code is written here (structure, naming, patterns, tests, style and comments
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org): `type(scope): subject`, for example `fix(sync): keep the draft when the upload fails`.
 
 - **Types:** `feat` (something new for the user), `fix` (a bug), `test` (tests only), `refactor` (no change in behaviour), `perf`, `docs`, `style` (formatting), `build`, `ci`, `chore`.
-- **Scopes:** <!-- one per part of the project, with what it covers -->. Leave the scope out when a change spans several.
+- **Scopes:** <!-- one per part of the project, in backticks, with what it covers. scripts/hooks/commit-msg reads the names in backticks on this line and the Types line; once a scope is listed here, only listed scopes pass. -->. Leave the scope out when a change spans several.
 - **Subject:** imperative and lowercase, no full stop. Aim for 72 characters; the hook warns past that and refuses past 100.
 - **Body:** say why, when it isn't obvious. Break lines only where you mean a break, like a new paragraph or a separate point. Don't break inside a sentence to keep lines short: GitHub keeps those breaks, and the text turns choppy.
 - **AI credit:** <!-- Say whether commits credit the agent. If they don't, set ALLOW_AI_CREDIT=0 in scripts/hooks/commit-msg. -->
