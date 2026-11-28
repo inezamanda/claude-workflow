@@ -223,6 +223,14 @@ project() {
         awk '$1 == "*" { found = 1 } END { exit !found }' "$owners" &&
             skip "$owners has a catch-all * line, so the hooks ask every commit for a \"Protected: <why>\" line"
     fi
+    # Claude asks before it edits a path CODEOWNERS lists. A settings.json of the project's own is never merged into.
+    guard core/claude/protected-edit.sh .claude/hooks/protected-edit.sh
+    if [ ! -e .claude/settings.json ]; then
+        copy core/claude/settings.json .claude/settings.json
+    elif ! grep -q 'protected-edit\.sh' .claude/settings.json; then
+        skip ".claude/settings.json is already there; add this hook to it, so Claude asks before it edits a path CODEOWNERS lists:"
+        sed 's/^/  /' "$repo/core/claude/settings.json" >&2
+    fi
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml
     copy core/github/pull_request_template.md .github/pull_request_template.md

@@ -56,12 +56,15 @@ codeowners() {
     done
 }
 
+# owner_patterns: the patterns CODEOWNERS lists, each line's first field; ! lines are dropped, since GitHub
+# rejects them and git would un-protect. git's matching is wider than GitHub's (a/* also matches a/b/c, and a
+# line without an owner still counts), so it errs toward protecting.
+owner_patterns() { codeowners | awk '$1 !~ /^[#!]/ && NF { print $1 }'; }
+
 # protected_paths: the paths the commit adds, changes or deletes that CODEOWNERS lists, one per line. Without
-# renames, so a file moved out of a protected folder counts. The patterns are each line's first field; ! lines
-# are dropped, since GitHub rejects them and git would un-protect. git's matching is wider than GitHub's (a/*
-# also matches a/b/c, and a line without an owner still counts), so it errs toward protecting.
+# renames, so a file moved out of a protected folder counts.
 protected_paths() {
-    patterns="$(codeowners | awk '$1 !~ /^[#!]/ && NF { print $1 }')"
+    patterns="$(owner_patterns)"
     [ -n "$patterns" ] || return 0
     git diff-index --cached --no-renames --name-only -z "$base" | matching "$patterns" | tr '\0' '\n'
 }

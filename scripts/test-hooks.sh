@@ -245,6 +245,40 @@ expect pass "protected: .github wins" commit_msg "$work/pb"
 owners pd .gitignore:/docs/ docs/CODEOWNERS:/a.txt && change "$work/pd" a.txt
 expect pass "protected: private docs/CODEOWNERS ignored" commit_msg "$work/pd"
 
+# core/claude/protected-edit.sh, Claude Code's PreToolUse hook: it asks before an edit of a path CODEOWNERS lists,
+# matched with the main checkout's checks.sh against the checkout that holds the path.
+cl="$work/cl" && fixture "$cl" && mkdir -p "$cl/.github" "$cl/scripts/hooks" && printf '/a.txt @OWNER\n/g/ @OWNER\n' > "$cl/.github/CODEOWNERS" &&
+    echo a > "$cl/a.txt" && cp "$root/core/hooks/checks.sh" "$cl/scripts/hooks/" && git -C "$cl" add -A &&
+    git -C "$cl" commit -qm init || exit 1
+# claude_hook <json> [project]: the hook's stdout for one tool call, run as Claude runs it, from the project.
+claude_hook() { (cd "${2:-$cl}" && printf '%s' "$1" | CLAUDE_PROJECT_DIR="${2:-$cl}" ${SH:-sh} "$root/core/claude/protected-edit.sh"); }
+# asks <json> [project]: the hook exits 0 and answers ask. silent <json> [project]: it exits 0 and prints nothing.
+asks() { out="$(claude_hook "$@")" && [ "$(printf '%s' "$out" | jq -r .hookSpecificOutput.permissionDecision)" = ask ]; }
+silent() { out="$(claude_hook "$@")" && [ -z "$out" ]; }
+edit() { printf '{"tool_name":"Edit","tool_input":{"file_path":"%s","old_string":"a","new_string":"b"}}' "$1"; }
+expect pass "claude: protected edit asks" asks "$(edit "$cl/a.txt")"
+expect pass "claude: other edit" silent "$(edit "$cl/b.txt")"
+mkdir -p "$work/nogit" && export GIT_CEILING_DIRECTORIES="$work" || exit 1
+expect pass "claude: outside any checkout" silent "$(edit "$work/nogit/a.txt")"
+unset GIT_CEILING_DIRECTORIES
+ln -s "$cl" "$work/cl-link" || exit 1
+expect pass "claude: project through a link" asks "$(edit "$work/cl-link/a.txt")"
+git -C "$cl" worktree add -q -b w1 "$cl/.claude/worktrees/w1" && git -C "$cl" worktree add -q -b w2 "$work/cl-w2" || exit 1
+expect pass "claude: edit in a .claude/worktrees worktree asks" asks "$(edit "$cl/.claude/worktrees/w1/a.txt")"
+expect pass "claude: edit in a sibling linked worktree asks" asks "$(edit "$work/cl-w2/a.txt")"
+expect pass "claude: a new file in a new protected folder" asks "$(edit "$work/cl-w2/g/new/x.txt")"
+git init -q "$cl/docs" && printf '/docs/\n' > "$cl/.gitignore" || exit 1
+expect pass "claude: edit in the docs repository" silent "$(edit "$cl/docs/a.txt")"
+rm -rf "$cl/docs" "$cl/.gitignore"
+notebook() { printf '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"%s","new_source":"x"}}' "$1"; }
+expect pass "claude: notebook_path" asks "$(notebook "$cl/a.txt")"
+expect pass "claude: notebook_path of another file" silent "$(notebook "$cl/b.ipynb")"
+expect pass "claude: no path asks" asks '{"tool_name":"Edit","tool_input":{}}'
+expect pass "claude: empty path asks" asks "$(edit "")"
+export JQ=/nonexistent/jq && expect pass "claude: no jq asks" asks "$(edit "$cl/b.txt")" && unset JQ
+mkdir -p "$work/nochecks" || exit 1
+expect pass "claude: no checks.sh asks" asks "$(edit "$cl/b.txt")" "$work/nochecks"
+
 # scripts/hooks (the scrub check), in a throwaway repository with its own word list.
 # The refusals must be scrub.sh's own, so a hook that can't find it fails them.
 repo="$work/repo"

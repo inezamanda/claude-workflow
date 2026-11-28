@@ -163,6 +163,7 @@ check "project's CLAUDE.md imports AGENTS.md, then CONTRIBUTING.md and docs/prin
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@docs/principles.md')" ]
 check "project: adds the hooks" sh -c "[ -x scripts/hooks/commit-msg ] && [ -x scripts/hooks/pre-commit ] && [ -x scripts/hooks/scrub.sh ] && cmp -s scripts/hooks/checks.sh '$src/core/hooks/checks.sh'"
 check "project: adds CODEOWNERS" cmp -s .github/CODEOWNERS "$src/core/github/CODEOWNERS"
+check "project: adds settings.json with the hook" sh -c "cmp -s .claude/settings.json '$src/core/claude/settings.json' && [ -x .claude/hooks/protected-edit.sh ]"
 check "project: says how to make the scrub list" grep -qF ".git/info/scrub-words" "$work/out"
 check "a new project's hooks get no warning that they differ" sh -c "! grep -q 'differs' '$work/out'"
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
@@ -304,6 +305,15 @@ check "project: no warning without a catch-all line" sh -c "! grep -q 'catch-all
 mkdir -p "$work/p18" && cd "$work/p18" && git init -q && printf '* @us\n' > CODEOWNERS || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: warns about a catch-all line" grep -q 'catch-all' "$work/out"
+
+# Claude's hook: settings.json is written when there's none; one of the project's own is kept, and the hook block
+# printed unless it already names the hook.
+mkdir -p "$work/p19/.claude" && cd "$work/p19" && git init -q && printf '{"model":"x"}\n' > .claude/settings.json || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: keeps settings.json" sh -c "[ \"\$(cat .claude/settings.json)\" = '{\"model\":\"x\"}' ] && grep -q 'protected-edit.sh' '$work/out'"
+mkdir -p "$work/p20/.claude" && cd "$work/p20" && git init -q && cp "$src/core/claude/settings.json" .claude/ || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: no block when the hook is named" sh -c "! grep -q 'settings.json is already there' '$work/out'"
 
 # Hooks kept from an older setup: a warning when one differs, except in commit-msg's ALLOW_AI_CREDIT line
 mkdir -p "$work/p15/scripts/hooks" && cd "$work/p15" && git init -q && printf '#!/bin/sh\nexit 0\n' > scripts/hooks/commit-msg || exit 1
