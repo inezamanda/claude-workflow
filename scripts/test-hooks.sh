@@ -201,6 +201,8 @@ n256="$work/n256" && notes "$n256" "$all" --object-format=sha256 && git -C "$n25
 expect pass "post-checkout: a sha256 repository's new worktree gets the links" linked "$n256/a"
 nt="$work/nt" && notes "$nt" "$all" --template= && [ ! -e "$nt/.git/info" ] && git -C "$nt" worktree add -q "$nt/a" 2>/dev/null || exit 1
 expect pass "post-checkout: a repository without info/ gets the exclude line" clean "$nt/a"
+nn="$work/nn" && notes "$nn" "$all" && printf /x > "$nn/.git/info/exclude" && git -C "$nn" worktree add -q "$nn/a" 2>/dev/null || exit 1
+expect pass "post-checkout: an exclude file without a last newline gets /docs on a line of its own" clean "$nn/a"
 
 # Notes public: no ignored docs/, no docs repository
 pp="$work/pp" && fixture "$pp" && git -C "$pp" commit -qm init && mkdir "$pp/docs" && echo x > "$pp/docs/x.md" &&
