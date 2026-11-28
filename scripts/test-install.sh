@@ -170,6 +170,7 @@ check "a new project's hooks get no warning that they differ" sh -c "! grep -q '
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
 check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
+check "project without --apple adds no Swift configs" sh -c "[ ! -e .swift-format ] && [ ! -e .swiftlint.yml ]"
 check "project with the template's CONTRIBUTING.md doesn't warn about its types" sh -c "! grep -q 'Types:' '$work/out'"
 echo mine > docs/principles.md
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
@@ -184,6 +185,8 @@ PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "project --apple succeeds" [ $? -eq 0 ]
 check "project --apple adds CODING.md" [ -f CODING.md ]
 check "project --apple adds the code smells" [ -f docs/code-smells.md ]
+check "project --apple adds .swift-format and .swiftlint.yml" \
+    sh -c "cmp -s .swift-format '$src/apple/swift-format.json' && cmp -s .swiftlint.yml '$src/apple/swiftlint.yml'"
 check "project --apple's AGENTS.md lists all four to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md\ndocs/code-smells.md')" ]
 check "project --apple's CLAUDE.md imports AGENTS.md and all four" \
@@ -309,6 +312,13 @@ check "project: prints the template's lines to add" grep -qx '  /scripts/hooks/ 
 check "project: names the CODEOWNERS it uses" sh -c "grep -qx '  /CODEOWNERS @OWNER' '$work/out' && ! grep -q '/.github/CODEOWNERS @OWNER' '$work/out'"
 check "project: doesn't print a line the file has" sh -c "! grep -qx '  /.gitignore @OWNER' '$work/out'"
 check "project: no warning without a catch-all line" sh -c "! grep -q 'catch-all' '$work/out'"
+check "project without --apple with its own CODEOWNERS isn't told the Swift configs" sh -c "! grep -q 'swift' '$work/out'"
+# The same with --apple: told the Swift configs' lines too, and a .swiftlint.yml of its own kept
+mkdir -p "$work/p24" && cd "$work/p24" && git init -q && printf '/src/ @us\n' > CODEOWNERS && echo mine > .swiftlint.yml || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple with its own CODEOWNERS is told /.swiftlint.yml and /.swift-format" \
+    sh -c "grep -qx '  /.swiftlint.yml @OWNER' '$work/out' && grep -qx '  /.swift-format @OWNER' '$work/out'"
+check "project --apple keeps its own .swiftlint.yml" [ "$(cat .swiftlint.yml)" = mine ]
 mkdir -p "$work/p18" && cd "$work/p18" && git init -q && printf '* @us\n' > CODEOWNERS || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: warns about a catch-all line" grep -q 'catch-all' "$work/out"

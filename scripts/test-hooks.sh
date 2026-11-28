@@ -402,4 +402,61 @@ expect -m '^scrub: ' refuse "scrub: word in a file name" scrub_staged
 expect -m '^scrub: ' refuse "scrub: list of blank lines" scrub_staged
 rm "$repo/.git/info/scrub-words" && expect -m '^scrub: ' refuse "scrub: list missing" scrub_staged
 
+# apple/swiftlint.yml and apple/swift-format.json with the real tools, from Homebrew and Xcode; each part prints
+# skip when its tool isn't installed.
+tools="$PATH:/opt/homebrew/bin:/usr/local/bin"
+# swift_file <path> <body> [date]: a Swift file with the header Xcode writes, dated d/m/yy unless a date is given.
+swift_file() {
+    mkdir -p "$(dirname "$1")" &&
+        printf '//\n//  %s\n//  App\n//\n//  Created by T on %s.\n//\n\n%s\n' "$(basename "$1")" "${3:-28/11/26}" "$2" > "$1"
+}
+# swift_repo <folder>: a repository with both configs at its root.
+swift_repo() {
+    git init -q "$1" && cp "$root/apple/swiftlint.yml" "$1/.swiftlint.yml" &&
+        cp "$root/apple/swift-format.json" "$1/.swift-format" || exit 1
+}
+# lint <repository> <paths...>: SwiftLint as the hook runs it, its findings on stderr.
+lint() { r="$1" && shift && (cd "$r" && PATH="$tools" swiftlint lint --strict --quiet "$@") 1>&2; }
+if PATH="$tools" command -v swiftlint >/dev/null; then
+    sl="$work/sl" && swift_repo "$sl"
+    swift_file "$sl/Sources/App/Clean.swift" 'let value = 1'
+    expect pass "swiftlint.yml: a clean file passes" lint "$sl" Sources/App/Clean.swift
+    swift_file "$sl/Sources/App/Log.swift" 'func f() {
+    print("x")
+}'
+    expect -m '(no_print)' refuse "swiftlint.yml: print in app code refused" lint "$sl" Sources/App/Log.swift
+    cp "$sl/Sources/App/Log.swift" "$sl/Sources/App/LogTests.swift" && mkdir -p "$sl/Tests/AppTests" &&
+        cp "$sl/Sources/App/Log.swift" "$sl/Tests/AppTests/Log.swift" && sed -i '' 's/Log\.swift/LogTests.swift/' "$sl/Sources/App/LogTests.swift"
+    expect pass "swiftlint.yml: print in Tests/ and in a FooTests.swift passes" \
+        lint "$sl" Tests/AppTests/Log.swift Sources/App/LogTests.swift
+    ft="$work/FooTests/sl" && swift_repo "$ft" && cp "$sl/Sources/App/Log.swift" "$ft/Log.swift"
+    expect -m '(no_print)' refuse "swiftlint.yml: print under a FooTests/ parent still refused" lint "$ft" Log.swift
+    printf '// A comment, not the header Xcode writes\n\nlet value = 1\n' > "$sl/Sources/App/Bare.swift"
+    expect -m '(file_header)' refuse "swiftlint.yml: no Xcode header refused" lint "$sl" Sources/App/Bare.swift
+    swift_file "$sl/Sources/App/Long.swift" 'let value = 1' 28/11/2026
+    swift_file "$sl/Sources/App/Dots.swift" 'let value = 1' 28.11.26
+    expect pass "swiftlint.yml: with d/m/yy, dd/MM/yyyy and 28.11.26 passes" \
+        lint "$sl" Sources/App/Clean.swift Sources/App/Long.swift Sources/App/Dots.swift
+    swift_file "$sl/Sources/App/Loop.swift" 'func f() {
+    for i in 0..<2 { _ = i }
+}'
+    expect pass "swiftlint.yml: a loop index i passes" lint "$sl" Sources/App/Loop.swift
+else
+    echo "skip  swiftlint.yml: no swiftlint"
+fi
+if PATH="$tools" swift format --version >/dev/null 2>&1; then
+    sf="$work/sf" && swift_repo "$sf"
+    swift_file "$sf/Four.swift" 'func f() {
+    _ = 1
+}'
+    swift_file "$sf/Two.swift" 'func f() {
+  _ = 1
+}'
+    format() { (cd "$sf" && PATH="$tools" swift format lint --strict "$1"); }
+    expect pass "swift-format.json: four-space indent passes" format Four.swift
+    expect refuse "swift-format.json: two-space indent refused" format Two.swift
+else
+    echo "skip  swift-format.json: no swift format"
+fi
+
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

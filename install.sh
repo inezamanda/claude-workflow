@@ -232,8 +232,10 @@ project() {
         copy core/github/CODEOWNERS .github/CODEOWNERS
     else
         # The template protects itself as /.github/CODEOWNERS; here the file to protect is the project's own.
-        lines="$(awk -v own="/$owners" 'NR == FNR { have[$1]; next }
+        # The Swift configs' lines only with --apple, since only then does it add those files.
+        lines="$(awk -v own="/$owners" -v apple="$apple" 'NR == FNR { have[$1]; next }
             $1 == "/.github/CODEOWNERS" { $1 = own }
+            !apple && ($1 == "/.swiftlint.yml" || $1 == "/.swift-format") { next }
             NF && $1 !~ /^#/ && !($1 in have)' "$owners" "$repo/core/github/CODEOWNERS")"
         if [ -n "$lines" ]; then
             skip "$owners is already there; add these lines to it, so the hooks protect the guards:"
@@ -281,6 +283,8 @@ project() {
     reads="CONTRIBUTING.md docs/principles.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md
+        copy apple/swift-format.json .swift-format
+        copy apple/swiftlint.yml .swiftlint.yml
         reads="CONTRIBUTING.md CODING.md docs/principles.md"
         if smells="$(above apple/CLAUDE.md)"; then
             skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"

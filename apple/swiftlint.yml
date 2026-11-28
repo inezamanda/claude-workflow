@@ -1,0 +1,121 @@
+# SwiftLint checks naming, size and code smells. Layout (indentation, line breaks,
+# trailing commas) belongs to swift-format, configured in .swift-format.
+
+# No swiftlint_version here: with one, every Swift commit is refused once Homebrew ships a newer SwiftLint, and
+# Homebrew can't install an older one. The SwiftLint image in CI's workflow decides the version.
+
+excluded:
+  - .build
+  - "**/.build"
+  - "**/Package.swift"  # its first line must be swift-tools-version, so it has no header
+
+disabled_rules:
+  # Layout rules that swift-format already decides.
+  - trailing_comma  # swift-format adds trailing commas to multiline collections
+  - opening_brace   # swift-format puts the brace on its own line after a wrapped signature
+  # Stored raw values are written out on purpose (CODING.md section 6).
+  - redundant_string_enum_value
+
+opt_in_rules:
+  - file_header
+  - closure_spacing
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - last_where
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  # Crashes and leaks a tool can see.
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - unowned_variable_capture
+  - weak_delegate
+  - discarded_notification_center_observer
+  # Errors are handled, not swallowed (CODING.md section 3).
+  - unhandled_throwing_task
+  - fatal_error_message
+  # A view never keeps its own copy of state that lives elsewhere (CODING.md section 4).
+  - private_swiftui_state
+  - identical_operands
+  - contains_over_filter_count
+  - empty_xctest_method
+  # Decorative images are hidden from VoiceOver, and a tap gesture says it's a button (CODING.md section 4).
+  - accessibility_label_for_image
+  - accessibility_trait_for_button
+  # Left off on purpose: strict_fileprivate (swift-format writes fileprivate on extension members, and private there
+  # isn't visible to the view using them), legacy_objc_type (NSString gives CoreText's UTF-16 lengths, and
+  # NSItemProvider takes NSData).
+
+line_length:
+  warning: 120  # the same as swift-format's lineLength
+  ignores_urls: true
+
+large_tuple:
+  warning: 4  # a test helper's four values read fine as a tuple
+  error: 5
+
+identifier_name:
+  excluded:  # short names that are clearer than a long one
+    - id
+    - i  # loop index
+
+file_header:  # the header Xcode writes; the date is in the Mac's own short format, so any form passes
+  required_pattern: |
+    \/\/
+    \/\/  SWIFTLINT_CURRENT_FILENAME
+    \/\/  .+
+    \/\/
+    \/\/  Created by .+ on .+\.
+    \/\/
+
+# The path rules below see absolute paths. They leave out test code by file name (FooTests.swift) and by SwiftPM's
+# Tests/ folder, not by a folder pattern such as /[^/]*Tests/, which would also match the folders above the
+# repository. Known limit: a repository inside a folder named exactly Tests gets none of these path rules.
+custom_rules:
+  color_by_name:
+    name: Colour by name
+    message: "Use the asset catalog's generated symbol, Color(.name): a mistyped name compiles and shows nothing."
+    included: ".*\\.swift"
+    excluded: "(/Tests/|Tests?\\.swift$)"
+    regex: "\\b(Color\\(|UIColor\\(named: )\""
+    excluded_match_kinds: [comment, doccomment]
+    severity: error
+  unchecked_sendable:
+    name: Unchecked concurrency
+    message: "@unchecked Sendable and nonisolated(unsafe) need the maintainer's OK first, and the reason in the PR. An agreed one gets // swiftlint:disable:next unchecked_sendable - <reason>."
+    regex: "(@unchecked\\s+Sendable|nonisolated\\(unsafe\\))"
+    excluded_match_kinds: [comment, doccomment, string]
+    severity: error
+  orphan_doc_comment:
+    name: Doc comment with nothing under it
+    message: "A doc comment belongs directly above its declaration. Inserting code between them moves the comment onto the wrong one."
+    regex: "///[^\\n]*\\n[ \\t]*\\n"
+    severity: error
+  no_print:
+    name: No print
+    message: "Use os.Logger, with .private on anything that might hold the user's data (CODING.md section 7)."
+    included: ".*\\.swift"
+    excluded: "(/Tests/|Tests?\\.swift$)"
+    regex: "\\b(print|debugPrint|dump|NSLog)\\("
+    excluded_match_kinds: [comment, doccomment, string]
+    severity: error
+  british_identifiers:
+    name: American spelling in identifiers
+    message: "Identifiers use American spelling, like Apple's APIs: color, not colour."
+    included: ".*\\.swift"
+    regex: "[A-Za-z]*([Cc]olour|[Bb]ehaviour|[Ff]avourite|[Cc]entre|[Gg]rey|[Ll]icence|[Cc]atalogue|[Ii]nitialis|[Oo]rganis|[Nn]ormalis|[Rr]ecognis|[Ss]ummaris|[Aa]uthoris|[Cc]ustomis)[A-Za-z]*"
+    match_kinds:
+      - identifier
+    severity: error
+  # `(try? load()) ?? []` turns a failure into an empty list (CODING.md section 3).
+  try_as_empty:
+    name: A failure read as empty
+    message: "Handle the error: (try? x) ?? empty turns a failure into nothing, which can tell the user their data is gone."
+    included: ".*\\.swift"
+    excluded: "(/Tests/|Tests?\\.swift$)"
+    regex: "\\(try\\?[^()]*(\\([^()]*\\)[^()]*)*\\)\\s*\\?\\?\\s*(\\[\\]|\\[:\\]|nil|\"\"|0|false)"
+    excluded_match_kinds: [comment, doccomment, string]
+    severity: error
