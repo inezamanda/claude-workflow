@@ -14,6 +14,7 @@ core/                              for any project
   principles.md                    how work is planned, proven, reviewed and committed
   CONTRIBUTING.md                  commits, branches and pull requests (a template)
   agents/code-reviewer.md          a read-only reviewer for a whole branch
+  agents/test-writer.md            an experiment, not copied into projects: writes a commit's failing tests from its spec
   github/review.yml                a Claude review of each pull request
   github/pull_request_template.md
   github/CODEOWNERS                the paths the hooks protect, the guards to start with
@@ -37,9 +38,12 @@ apple/                             for Swift and SwiftUI apps, on top of core/
   skills/                          three Instruments skills from Axiom, each with its LICENSE and SOURCE.md
 install.sh                         sets up a machine, and copies the templates into a project
 scripts/                           this repository's own hooks, and the tests
+docs/                              this repository's own plan and decisions, not copied into projects
 ```
 
 Files marked as templates have `<placeholders>` and `<!-- notes -->` to fill in or delete.
+
+A project's `AGENTS.md`, the principles and the project's skills work with any agent tool that reads `AGENTS.md` and `.agents/skills/`, such as Codex, Cursor or OpenCode. The agents, hooks and permissions are Claude Code's for now; another tool gets its own small files once it's really used.
 
 ## How to use it
 
@@ -75,6 +79,18 @@ It never overwrites a file that's already there. With `--apple` it leaves out `d
 Where the notes are private, because `docs/` is git-ignored or a repository of its own, `AGENTS.md` and `CLAUDE.md` name private files, so it adds them to `.gitignore`, and it says how to untrack either one if it's already tracked. The `union` line then goes in `docs/.gitattributes`, beside the decisions log. Git-ignored files aren't checked out into a new worktree, so the `post-checkout` hook links `docs`, `AGENTS.md` and `CLAUDE.md` into one from the main worktree, each when git ignores it, and adds `/docs` to `.git/info/exclude`, since `/docs/` doesn't match a link. To make the notes public later, remove that line too. It links nothing in `.claude/`. `claude --worktree` doesn't run it: Claude Code checks its worktree out with `--no-checkout` and a reset, and git runs `post-checkout` for neither. For a session with the notes, make the worktree with `git worktree add` and start `claude` in it. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
 
 `principles.md` describes two levels: **full**, for projects that hold people's data, money or credentials, and **light**, for everything else. Pick one in each plan.
+
+## Guardrails
+
+The first four hold for every agent tool, since they check commits and pull requests; the fifth is Claude Code's, and stops a mistake earlier:
+
+1. **`pre-commit`**: no commit on `main`; where the notes are private, no private path and no line that points into them; the scrub list; a warning past 200 changed lines outside tests.
+2. **`commit-msg`**: Conventional Commits, with types and scopes from `CONTRIBUTING.md`; the scrub list; no path into private notes; and a `Protected: <why>` line when the commit changes a path `CODEOWNERS` lists.
+3. **CI, `checks.yml`**: both hooks again on every commit of a pull request, with the base's copies, so a skipped hook is still caught.
+4. **GitHub**: a ruleset on `main`, set by hand, that requires a pull request and the `checks` status, and blocks force pushes. `.github/CODEOWNERS` is the one list of protected paths.
+5. **Claude Code**: a `PreToolUse` hook on Edit, Write and NotebookEdit that asks before it changes a protected path.
+
+They guard against mistakes, not against someone who means to get past them: the author holds the maintainer's credentials. `CONTRIBUTING.md` lists what they can't catch.
 
 ## The plugins it installs
 
