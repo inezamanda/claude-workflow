@@ -129,9 +129,12 @@ fresh five && mkdir -p "$work/p1" && cd "$work/p1" && git init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project succeeds" [ $? -eq 0 ]
 for f in docs/CLAUDE.md CONTRIBUTING.md scripts/hooks/commit-msg .claude/agents/code-reviewer.md \
-    .github/workflows/review.yml .github/pull_request_template.md; do
+    .github/workflows/review.yml .github/pull_request_template.md \
+    docs/templates/spec.md docs/templates/decisions.md docs/templates/edge-list.md; do
     check "project adds $f" [ -f "$f" ]
 done
+check "project's .gitattributes merges the decisions log with union" grep -qxF "docs/decisions.md merge=union" .gitattributes
+check "project adds no decisions log of its own" [ ! -e docs/decisions.md ]
 check "project's CLAUDE.md imports CONTRIBUTING.md and docs/CLAUDE.md" \
     [ "$(cat CLAUDE.md)" = "$(printf '@CONTRIBUTING.md\n@docs/CLAUDE.md')" ]
 check "project's commit-msg hook is executable" [ -x scripts/hooks/commit-msg ]
@@ -171,9 +174,15 @@ check "project --apple under the code smells imports three" \
 
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1
+echo "*.png binary" > .gitattributes
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "an existing CLAUDE.md is left as it was" [ "$(cat CLAUDE.md)" = "# our rules" ]
 check "it lists the imports to add" grep -q "@docs/CLAUDE.md" "$work/out"
+check "an existing .gitattributes is left as it was" [ "$(cat .gitattributes)" = "*.png binary" ]
+check "it gives the union line to add" grep -qF "  docs/decisions.md merge=union" "$work/out"
+echo "docs/decisions.md merge=union" >> .gitattributes
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "with the union line there, it doesn't ask for it" sh -c "! grep -q 'merge=union' '$work/out'"
 
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1

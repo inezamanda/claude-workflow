@@ -166,6 +166,19 @@ project() {
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml
     copy core/github/pull_request_template.md .github/pull_request_template.md
+    copy core/templates/spec.md docs/templates/spec.md
+    copy core/templates/decisions.md docs/templates/decisions.md
+    copy core/templates/edge-list.md docs/templates/edge-list.md
+
+    # Two branches that each add rows to the append-only decisions log then merge without a conflict.
+    union="docs/decisions.md merge=union"
+    if [ ! -e .gitattributes ]; then
+        printf '%s\n' "$union" > .gitattributes && say "added .gitattributes" || fail "couldn't add .gitattributes"
+    elif ! grep -qxF "$union" .gitattributes; then
+        skip ".gitattributes is already there; add this line to it to merge the decisions log:"
+        printf '  %s\n' "$union" >&2
+    fi
+
     imports="@CONTRIBUTING.md @docs/CLAUDE.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md

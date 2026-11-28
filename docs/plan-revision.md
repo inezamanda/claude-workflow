@@ -61,7 +61,7 @@ The maintainer orchestrates. A session may plan, write code, start subagents and
 
 | Role | Kind | Model, effort (proposed) | Input | Output | Tools | May not | When |
 |---|---|---|---|---|---|---|---|
-| Planner | session, plan mode in Claude | Opus 5.5: xhigh on a full-level branch, high otherwise | the task, the code, the notes | the spec file, from the template | read, search | write code; decide for the maintainer | before each branch |
+| Planner | session, plan mode in Claude | Opus 5.5 high; xhigh only when plan reviews keep finding design musts | the task, the code, the notes | the spec file, from the template | read, search | write code; decide for the maintainer | before each branch |
 | Implementer | session | Opus 5.5 high on full level, Sonnet 5.5 high on light | the approved spec | commits, each shown before its OK | all, within the hooks | change the spec without stopping to ask | after the spec is approved |
 | Explorer | subagent | Haiku 5.5, low | one question | `path:line` facts | read, search | judge or decide | when a lookup spans many files |
 | Test writer | subagent, **experiment** | the implementer's model, so only independence changes | the spec's approved types, function names and test names | failing tests, never code | read; write only in test folders | read the implementation; change a test name | before each logic commit |
@@ -95,11 +95,11 @@ Protected paths are listed once per project, for example the protocol folder, th
 - **edge-list.md**: per screen or function, one row per edge: empty, wrong or too long input; each picker option; errors and interruptions mid-action; keyboard, sheets, alerts and focus; screen readers, large text, dark mode; what other screens show afterwards. Columns: edge, expected, decision, test.
 - **The spec catches what reviews kept finding.** In six past plan reviews of the iOS app, most findings were claims about existing code that were wrong, and tests that couldn't fail. So the spec template asks for a `path:line` behind every claim about existing code, and the mutation each test catches; and it ends with a "ready for review" checklist the planner runs first. The reviewer checks those, and spends its effort on design.
 - **Review rounds, for the plan and for the branch alike:** round 1 reads everything. Round 2 reads its own findings, the diff since round 1, and the code and plan sections each fix touches or depends on: the iOS app's round-2 musts sat there, including fixes that showed the real problem was a different one. A full fresh re-read runs only on a full-level branch where a round-1 must changed the design, since that's where problems far from the fixes turned up (decisions, 28 Nov).
-- **Open:** one `decisions.md` table, which two parallel branches can conflict on, or one file per decision (`docs/decisions/<date>-<topic>.md`).
+- **decisions.md** is append-only and has `docs/decisions.md merge=union` in the project's `.gitattributes`, so parallel branches' new rows merge without a conflict. Its header says to search by area and to archive past about 300 lines (decisions, 28 Nov). Not verified: whether GitHub's merge button uses the driver; if it shows a conflict, `git merge main` in the branch, locally, settles it.
 
 ## Commits
 
-Sizes count non-test lines added and removed. Five branches, each a pull request.
+Sizes count non-test lines added and removed. Five branches, each a pull request, one after another: almost every one changes `install.sh` and its tests (decisions, 28 Nov). Each starts in a fresh session from this plan.
 
 **Branch 1, `fix/repository-name`**
 
@@ -109,11 +109,11 @@ Sizes count non-test lines added and removed. Five branches, each a pull request
 
 **Branch 2, `feat/agents-md`**
 
-4. `docs: add templates for a spec, a decisions log and an edge list`. ~150, M.
+4. `docs: add templates for a spec, a decisions log and an edge list`: `install.sh project` copies them into `docs/templates/` and writes `.gitattributes` with the `union` line, which this repository gets too (decisions, 28 Nov). ~160, M.
 5. `refactor: split the global instructions into AGENTS.md and a Claude adapter`: mostly a move; `install.sh` links the new path. ~60, S.
 6. `feat: give projects an AGENTS.md that CLAUDE.md imports`: both templates; `install.sh` writes them and keeps its never-overwrite rule. ~100, M.
-7. `feat: put the skills in .agents/skills with a .claude/skills link`. ~40, S. **Open:** the Swift Pro skills stay Claude plugins, or are copied into `.agents/skills/` with a lock file, like the iOS app's.
-8. `docs: one skill per step in the Claude adapter`: the table agreed in chat, replacing the duplicates. ~60, S. **Open:** the table isn't approved yet.
+7. `feat: put the skills in .agents/skills with a .claude/skills link`: for skills a project keeps itself, such as the Axiom copies. ~40, S. Hudson's skills stay plugins (decisions, 28 Nov).
+8. `docs: one skill per step in the Claude adapter`: the table (decisions, 28 Nov), replacing the duplicates; that `skillOverrides` doesn't reach plugin skills; and that a session doing light work asks the maintainer to switch to Sonnet 5.5. ~70, S.
 9. `docs: make the principles tool-neutral and the notes a choice per project`: line 3, principle 2 (public or private notes), principle 8 (parallel sessions and worktrees), lines 91, 113 and 117. ~60, S.
 10. `docs: let the reviewer read the spec first and the Swift skills`: `code-reviewer.md` reads `AGENTS.md` and the plan, checks the spec's citations and mutations, and has a round-2 mode that reads only its findings and the plan's diff. ~40, S.
 
@@ -152,6 +152,8 @@ The question: does a test writer that works from the spec, before the code exist
 
 | # | Commit | Hash | Maintainer's notes |
 |---|---|---|---|
-| | | | |
+| 1 | `docs: name the repository agent-workflow in the readme` | 007851a | OK as proposed |
+| 2 | `feat: rename the command and its clone to agent-workflow` | 338dd42 | Test fixes kept in the same commit |
+| 3 | `docs: add the plan and the decisions log` | 5ff7ca6 | OK as proposed |
 
-Next: the open decisions, one at a time, then commit 1.
+Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 4, which also commits the notes changed since commit 3. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5).
