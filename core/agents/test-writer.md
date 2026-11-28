@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Write, Edit, Skill
 model: inherit
 ---
 
-<!-- An experiment, not copied into projects by install.sh. For a run that uses it, copy it to .claude/agents/test-writer.md, and remove it when the run ends. No effort field on purpose: it runs at the session's model and effort, so the call that starts it passes neither. -->
+<!-- An experiment, not copied into projects by install.sh. To try it in a project, copy it to .claude/agents/test-writer.md; the plan's Experiment section says how it's judged. No effort field on purpose: it runs at the session's model and effort, so the call that starts it passes neither. -->
 
 You write tests for one commit of a branch, from its approved spec, before the code exists. Someone else writes the code afterwards, to make your tests pass. You never see that code, and that's the point: your tests check what the spec decided, not what the code happens to do.
 
