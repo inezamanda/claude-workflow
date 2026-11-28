@@ -95,6 +95,48 @@ plugins() {
     done
 }
 
+# xcode_plugin: Apple's Xcode plugin, for this project at local scope. It's installed by running a command the
+# marketplace declares; Claude Code shows that command and asks a person to accept it, so it's accepted here only
+# when it's the one below, by the sha256 the refused --json run reported.
+xcode_plugin() {
+    command -v claude >/dev/null 2>&1 || return # plugins already said they were skipped
+    if ! xcrun agent plugin path --plugin-format claude >/dev/null 2>&1; then
+        skip "Apple's Xcode plugin was skipped: install Xcode 27 or later, then run agent-workflow project --apple again"
+        return
+    fi
+    # Claude Code keys a local install by the main worktree's physical path, so linked worktrees share it.
+    root="$(cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd -P)" || root="$(pwd -P)"
+    # Python, from Xcode, is there once xcrun agent is; JSON in sh is guesswork.
+    claude plugin list --json 2>/dev/null | python3 -I -c '
+import json, sys
+sys.exit(not any(p.get("id") == "xcode@claude-plugins-official" and p.get("scope") == "local"
+                 and p.get("projectPath") == sys.argv[1] for p in json.load(sys.stdin)))' "$root" && return
+    expected="xcrun agent plugin path --plugin-format claude"
+    shown="$(claude plugin install xcode@claude-plugins-official --scope local --json </dev/null 2>/dev/null | tail -n 1)"
+    # "ok" when it installed already, since Claude Code remembers a command a person accepted; "failed" when it
+    # failed with no command shown; empty when the command shown isn't the expected one.
+    sha="$(printf '%s' "$shown" | python3 -I -c '
+import json, sys
+d = json.load(sys.stdin)
+c = d.get("shownCommand")
+if d.get("outcome") == "ok": print("ok")
+elif not c: print("failed")
+elif c.get("command") == sys.argv[1]: print(c.get("sha256", ""))' "$expected" 2>/dev/null || echo failed)"
+    xcode_added="installed xcode@claude-plugins-official for this project; Xcode asks you to approve each agent the first time it opens or creates a project through Xcode's tools"
+    not_installed="couldn't install Apple's Xcode plugin; to see why, run: claude plugin install xcode@claude-plugins-official --scope local"
+    case "$sha" in
+        ok) say "$xcode_added" ;;
+        failed) skip "$not_installed" ;;
+        "")
+            skip "Apple's Xcode plugin wasn't installed: its marketplace no longer shows the expected command ($expected). What it showed:"
+            printf '  %s\n' "$shown" >&2
+            skip "if that's safe to run, install it in your own terminal: claude plugin install xcode@claude-plugins-official --scope local" ;;
+        *)
+            claude plugin install xcode@claude-plugins-official --scope local --accept-command "$sha" >/dev/null 2>&1 &&
+                say "$xcode_added" || skip "$not_installed" ;;
+    esac
+}
+
 graphify_tool() {
     if ! command -v graphify >/dev/null 2>&1; then
         if ! command -v uv >/dev/null 2>&1; then
@@ -373,6 +415,11 @@ project() {
         swift-concurrency-pro@swift-concurrency-agent-skill=twostraws/Swift-Concurrency-Agent-Skill \
         swiftui-pro@swiftui-agent-skill=twostraws/SwiftUI-Agent-Skill \
         swift-testing-pro@swift-testing-agent-skill=twostraws/Swift-Testing-Agent-Skill
+    if [ "$apple" = 1 ]; then
+        # A local install's setting is this Mac's; even a refused install writes the file.
+        ignore .claude/settings.local.json "since it holds this Mac's own Claude settings" committed
+        xcode_plugin
+    fi
 }
 
 mode=machine apple=0

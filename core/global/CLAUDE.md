@@ -21,6 +21,7 @@ Where the project has its own workflow (`AGENTS.md`, "Process"), its steps repla
 | Bug | systematic-debugging | `caveman:investigate-first`, `engineering:debug` |
 | Look something up | Explore or `caveman:cavecrew-investigator` | `caveman:caveman-explore`, general-purpose |
 | Verify before saying done | verification-before-completion | `caveman:verify-and-stop` |
+| Review SwiftUI | SwiftUI Pro (`swiftui-pro:swiftui-pro`) | Apple's `swiftui-specialist`, which is for writing SwiftUI code, not reviewing it |
 | Review | The project's `code-reviewer` agent. Elsewhere: requesting-code-review | `ponytail:ponytail-review`, `caveman:caveman-review`, `caveman:cavecrew-reviewer`, `engineering:code-review`, `feature-dev:code-reviewer` |
 | Finish a branch | The commit and push rule in `AGENTS.md` | finishing-a-development-branch, which offers to merge and push |
 
