@@ -44,6 +44,7 @@ The log is append-only: a changed decision gets a new row that names the row it 
 | 2026-11-28 | Apple | SwiftLint's version is pinned only by CI's image tag; the generic `.swiftlint.yml` has no `swiftlint_version`. The Swift pre-commit step warns, without refusing, when the local SwiftLint differs. | With the pin in the config, SwiftLint exits on every file once Homebrew ships a newer one, and Homebrew can't install an older one. | maintainer |
 | 2026-11-28 | Guardrails | `core/github/CODEOWNERS` protects `/.swiftlint.yml` and `/.swift-format`. | Otherwise an agent could loosen a rule to get past the hook without a `Protected:` line. | maintainer |
 | 2026-11-28 | Skills | Replaces the row on Apple's Xcode plugin in its scope: `install.sh project --apple` installs it for the project at local scope (`.claude/settings.local.json`), not for the user. | Its skills' descriptions cost about 3k tokens a session, too much for every project; local scope leaves the committed, protected `.claude/settings.json` alone and offers nothing to clones without Xcode. | maintainer |
+| 2026-11-28 | Review | Every reviewer, for a spec or a branch, in every project, runs at high effort, never xhigh or max: `effort: high` in the `code-reviewer` template, and on the call where a project has none. | The reviews are the largest part of a branch's use: branch 3's branch review, on Opus 5.5 at xhigh, cost about 186k tokens, and branch 4's spec review at high about 144k. | maintainer |
 
 ## Open questions
 

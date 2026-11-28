@@ -28,7 +28,7 @@ Numbers aren't synonyms: a size in lines or a time estimate goes beside the labe
 - Start them on your own when they fit; don't wait for me to ask. I'm giving standing permission here, and it overrides any default to spawn only on request.
 - Subagents gather facts; the main session decides. Judgements, trade-offs and anything about security or data handling stay in the main session, which checks the subagent's report against the code before relying on it.
 - At most ~3 subagents at once; no swarms.
-- Review: a fresh reviewer for the spec before any code, and one for the branch at its end. Use the project's own reviewer agent if it has one.
+- Review: a fresh reviewer for the spec before any code, and one for the branch at its end. Use the project's own reviewer agent if it has one. Reviewers run at high effort, never higher.
 
 ## Voice
 

@@ -34,6 +34,7 @@ Where the project has its own workflow (`AGENTS.md`, "Process"), its steps repla
 
 **Subagents** (keep each agent's default model; don't force one globally):
 - Lookups ("where is X", "what calls Y"): `caveman:cavecrew-investigator` or Explore (both Haiku), when the answer needs a sweep across many files. A single grep or graphify query stays inline. Never general-purpose for lookups (it runs on Opus).
+- Reviewers, the project's `code-reviewer` or requesting-code-review's: pass `effort: "high"` on the call. The `code-reviewer` template sets it too.
 - A search that needs reading code rather than locating it (tracing a data flow, listing what breaks if X changes) may pass `model: sonnet` on that call.
 
 **graphify:** where `graphify-out/` exists, ask the graph before grepping: `graphify query "<question>"`, `graphify explain "X"`, `graphify affected "X"` (Bash, no LLM cost). `graphify update .` refreshes it for free after code changes. A full build costs tokens: only when the user runs `/graphify`, never on small repos.
