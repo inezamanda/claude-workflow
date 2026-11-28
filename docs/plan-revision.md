@@ -140,6 +140,9 @@ Sizes count non-test lines added and removed. Five branches, each a pull request
 
 Also open: whether this repository gets its own root `AGENTS.md` and `CLAUDE.md`, and whether graphify's `post-commit` refresh joins `core/`.
 
+- **Open:** what `install.sh project` writes where a project's notes are private. In the iOS app, `docs/` is a private repository of its own, ignored by the app's `.gitignore`, and `CLAUDE.md` is ignored too. There, `install.sh project` would add a public `AGENTS.md` that lists `docs/principles.md` and `docs/code-smells.md`, which points public files at private notes (principle 2). It would also add a `.gitattributes` whose `union` line does nothing, since `docs/decisions.md` belongs to the other repository. Found 28 Nov, while checking the commit 9 fixup.
+- **Open:** the code smells reach the Apple projects through a `CLAUDE.md` link made by hand in the folder above them, which `install.sh` doesn't know about. The clone's rename broke that link unnoticed, so the smells weren't loaded until it was relinked on 28 Nov. Renaming `apple/CLAUDE.md` to `code-smells.md`, as the target layout says, would break it again: keep the name, or have `install.sh` make or check the link.
+
 ## Experiment
 
 The question: does a test writer that works from the spec, before the code exists, give better tests and less rework for the tokens it costs?
@@ -161,5 +164,6 @@ The question: does a test writer that works from the spec, before the code exist
 | 6 | `feat: give projects an AGENTS.md that CLAUDE.md imports` | e2ad482 | OK as proposed |
 | 7 | `feat: put the skills in .agents/skills with a .claude/skills link` | 631b11c | OK as proposed; Claude Code's discovery through the link checked with `claude -p` |
 | 8 | `docs: one skill per step in the Claude adapter` | d1c5168 | OK as proposed; the table, lost from chat, rebuilt and approved |
+| 9 | `feat: rename the principles to docs/principles.md and make them tool-neutral` | d89f03d | Renamed to `docs/principles.md` on the agent's recommendation; `feat:` instead of the planned `docs:`, since `install.sh` changes. The fixup takes any `docs/CLAUDE.md` for an old copy, since the iOS app's is adapted past recognition; folded in with an autosquash on its own OK (it was 9dcd97e and 27c92d5). Commit 9 with its fixup: OK |
 
-Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 9, which also commits the notes changed since commit 8. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).
+Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 10, which also commits the notes changed since commit 9. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), 17a's Axiom accessibility copy (branch 4), and the two found on 28 Nov under the commits: private notes and the code smells' hand-made link.

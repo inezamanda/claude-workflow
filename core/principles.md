@@ -75,7 +75,7 @@ After writing code, read it again as a reviewer: is there a simpler way, a share
 
 **Fix the class, not the instance.** A finding, a failure or a review comment names one case. Before fixing it, name the kind of problem and work out every case of that kind, then fix them together, and prefer the platform's own tool to a hand-made one. Concurrency means walking through two runs interleaved, step by step; a CI failure means listing every way a run can end. Before blaming an outside cause ("probably an outage"), check it.
 
-- **The maintainer reviews each commit; one reviewer agent reviews the whole branch once, at its end**, without the maintainer's findings, so the two reviews stay independent. Check each of its findings against the code, then report three lists: what both found, what only the agent found (accepted or rejected, and why), and what only the maintainer found.
+- **The maintainer reviews each commit; a reviewer agent reviews the spec before any code and the whole branch once, at its end**, without the maintainer's findings, so the two reviews stay independent. Check each of its findings against the code, then report three lists: what both found, what only the agent found (accepted or rejected, and why), and what only the maintainer found.
 - **Reply to every review comment on a pull request**, from bots and people alike: name the fix commit and its test, or say why it isn't fixed. Before calling a pull request ready, check every thread has a reply.
 - **Guides and plans get several passes:** draft, check against the sources, against the other docs, against the real code, try them on the next real task, then trim.
 
