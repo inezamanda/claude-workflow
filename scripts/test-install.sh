@@ -296,11 +296,17 @@ mkdir -p "$work/p14/docs" && cd "$work/p14" && git init -q && printf '/docs/\n' 
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: private notes with a docs/ file tracked" grep -qxF /AGENTS.md .gitignore
 
+# Notes ignored only by a local rule: /docs/ goes in .gitignore too, since CI and worktrees read only that
+mkdir -p "$work/p23/docs" && cd "$work/p23" && git init -q && echo /docs/ > .git/info/exclude || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: appends /docs/ when only a local rule ignores it" grep -qxF /docs/ .gitignore
+
 # A CODEOWNERS of the project's own is kept, and the template's lines printed: a second one would win over it
 mkdir -p "$work/p17" && cd "$work/p17" && git init -q && printf '/src/ @us\n/.gitignore @us\n' > CODEOWNERS || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: keeps a root CODEOWNERS" sh -c "[ ! -e .github/CODEOWNERS ] && [ \"\$(cat CODEOWNERS)\" = \"\$(printf '/src/ @us\n/.gitignore @us')\" ]"
 check "project: prints the template's lines to add" grep -qx '  /scripts/hooks/ @OWNER' "$work/out"
+check "project: names the CODEOWNERS it uses" sh -c "grep -qx '  /CODEOWNERS @OWNER' '$work/out' && ! grep -q '/.github/CODEOWNERS @OWNER' '$work/out'"
 check "project: doesn't print a line the file has" sh -c "! grep -qx '  /.gitignore @OWNER' '$work/out'"
 check "project: no warning without a catch-all line" sh -c "! grep -q 'catch-all' '$work/out'"
 mkdir -p "$work/p18" && cd "$work/p18" && git init -q && printf '* @us\n' > CODEOWNERS || exit 1
@@ -332,10 +338,12 @@ mkdir -p "$work/p15/scripts/hooks" && cd "$work/p15" && git init -q && printf '#
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: keeps an older hook" [ "$(cat scripts/hooks/commit-msg)" = "$(printf '#!/bin/sh\nexit 0')" ]
 check "project: warns about an older hook" grep -q 'scripts/hooks/commit-msg differs' "$work/out"
+check "project: no checks.yml while the hooks are older" sh -c "[ ! -e .github/workflows/checks.yml ] && grep -q 'checks.yml.*commit-msg' '$work/out'"
 mkdir -p "$work/p16/scripts/hooks" && cd "$work/p16" && git init -q &&
     sed 's/^ALLOW_AI_CREDIT=1$/ALLOW_AI_CREDIT=0/' "$src/core/hooks/commit-msg" > scripts/hooks/commit-msg || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: ALLOW_AI_CREDIT doesn't count" sh -c "grep -q '^ALLOW_AI_CREDIT=0' scripts/hooks/commit-msg && ! grep -q 'differs' '$work/out'"
+check "project: checks.yml with hooks that know CI" [ -f .github/workflows/checks.yml ]
 
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1

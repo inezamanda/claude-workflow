@@ -153,11 +153,16 @@ guard() {
         skip "$2 differs from $repo/$1, which may check more by now; compare them with: diff $2 $repo/$1"
 }
 
-# ignore <path> <why>: appends /<path> to .gitignore, unless it's ignored already.
+# ignore <path> <why> [committed]: appends /<path> to .gitignore, unless it's ignored already. With committed, only
+# a line of .gitignore itself counts, not a local rule (.git/info/exclude, global excludes) that CI never sees.
 ignore() {
     # check-ignore fails outside a repository, so the line itself is looked for too.
     grep -qxF "/$1" .gitignore 2>/dev/null && return
-    git check-ignore -q --no-index "$1" 2>/dev/null && return
+    if [ "${3:-}" = committed ]; then
+        grep -qxE "/?${1%/}/?" .gitignore 2>/dev/null && return
+    else
+        git check-ignore -q --no-index "$1" 2>/dev/null && return
+    fi
     # A last line without a newline would run into the new one.
     [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
     printf '/%s\n' "$1" >> .gitignore && say "added /$1 to .gitignore, $2" || fail "couldn't add /$1 to .gitignore"
@@ -205,9 +210,17 @@ project() {
     for f in commit-msg pre-commit checks.sh scrub.sh; do
         guard "core/hooks/$f" "scripts/hooks/$f"
     done
-    # CI runs the hooks again on every commit of a pull request.
+    # CI runs the hooks again on every commit of a pull request, which kept hooks from before CI would fail.
     guard core/checks/ci-checks.sh scripts/ci-checks.sh
-    guard core/github/checks.yml .github/workflows/checks.yml
+    older=""
+    for f in commit-msg pre-commit checks.sh; do
+        grep -q CHECK_COMMIT "scripts/hooks/$f" 2>/dev/null || older="$older $f"
+    done
+    if [ -z "$older" ]; then
+        guard core/github/checks.yml .github/workflows/checks.yml
+    else
+        skip ".github/workflows/checks.yml wasn't added: the kept scripts/hooks/{$(echo $older | tr ' ' ,)} are from before CI, so it would fail every pull request, and they miss newer checks such as the Protected: line. Replace them with $repo/core/hooks/'s (keep commit-msg's ALLOW_AI_CREDIT), then run agent-workflow project again"
+    fi
     # The hooks protect the paths CODEOWNERS lists, read from the first place GitHub looks. Beside a project's own
     # file a new one would win over it, so the template's missing lines are printed instead.
     owners=""
@@ -218,7 +231,10 @@ project() {
     if [ -z "$owners" ]; then
         copy core/github/CODEOWNERS .github/CODEOWNERS
     else
-        lines="$(awk 'NR == FNR { have[$1]; next } NF && $1 !~ /^#/ && !($1 in have)' "$owners" "$repo/core/github/CODEOWNERS")"
+        # The template protects itself as /.github/CODEOWNERS; here the file to protect is the project's own.
+        lines="$(awk -v own="/$owners" 'NR == FNR { have[$1]; next }
+            $1 == "/.github/CODEOWNERS" { $1 = own }
+            NF && $1 !~ /^#/ && !($1 in have)' "$owners" "$repo/core/github/CODEOWNERS")"
         if [ -n "$lines" ]; then
             skip "$owners is already there; add these lines to it, so the hooks protect the guards:"
             printf '%s\n' "$lines" | sed 's/^/  /' >&2
@@ -282,8 +298,9 @@ project() {
             git ls-files --error-unmatch "$f" >/dev/null 2>&1 &&
                 skip "$f is tracked, but where the notes are private it mustn't be; untrack it first with: git rm --cached $f"
         done
-        # So a linked worktree, which has no docs/, still finds the notes private.
-        [ -e docs/.git ] && ignore docs/ "since docs/ is a repository of its own, which git would record here as an embedded one"
+        # So CI and a linked worktree, which see only the committed .gitignore (a worktree has no docs/), still
+        # find the notes private.
+        ignore docs/ "so CI and linked worktrees, which read only .gitignore, find the notes private" committed
         grep -qxF "docs/decisions.md merge=union" .gitattributes 2>/dev/null &&
             skip "the root .gitattributes still merges the decisions log, which is in the private notes now; remove its line docs/decisions.md merge=union"
     fi
