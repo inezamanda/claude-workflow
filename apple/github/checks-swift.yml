@@ -1,0 +1,49 @@
+# swift-format, SwiftLint and the Swift packages' tests on every pull request into main, on Linux so they cost the
+# fewest Actions minutes. They advise and don't block: leave these checks out of the ruleset on main, since a lint
+# finding shouldn't hold up a merge the way the hooks' checks do. Copy to .github/workflows/checks-swift.yml.
+# Never switch this to pull_request_target: it runs pull requests from forks with the repository's secrets.
+name: Swift
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: checks-swift-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The Swift packages to test, as folders from the root separated by spaces, such as "Packages/Core Packages/Sync".
+  # A package that imports UIKit or SwiftUI can't build on Linux, so leave it out. Empty: no tests run.
+  PACKAGES: ""
+
+jobs:
+  swift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The Swift release the code is formatted and built with: swift-format comes with the toolchain, and another
+    # release can format differently. Move it when Xcode's Swift moves.
+    container: swift:6.4.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: swift format lint --strict -r .
+      # A formatting slip shouldn't hide whether the tests pass.
+      - if: ${{ !cancelled() && env.PACKAGES != '' }}
+        run: for p in $PACKAGES; do (cd "$p" && swift test) || exit 1; done
+
+  swiftlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The project's SwiftLint version: .swiftlint.yml doesn't pin one, and the pre-commit hook warns when the one
+    # on a Mac isn't this tag.
+    container: ghcr.io/realm/swiftlint:0.59.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: swiftlint lint --strict

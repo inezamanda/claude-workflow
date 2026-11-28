@@ -170,7 +170,7 @@ check "a new project's hooks get no warning that they differ" sh -c "! grep -q '
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
 check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
-check "project without --apple adds no Swift configs" sh -c "[ ! -e .swift-format ] && [ ! -e .swiftlint.yml ]"
+check "project without --apple adds no Swift configs" sh -c "[ ! -e .swift-format ] && [ ! -e .swiftlint.yml ] && [ ! -e .github/workflows/checks-swift.yml ]"
 check "project with the template's CONTRIBUTING.md doesn't warn about its types" sh -c "! grep -q 'Types:' '$work/out'"
 echo mine > docs/principles.md
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
@@ -185,6 +185,8 @@ PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "project --apple succeeds" [ $? -eq 0 ]
 check "project --apple adds CODING.md" [ -f CODING.md ]
 check "project --apple adds the code smells" [ -f docs/code-smells.md ]
+check "project --apple adds checks-swift.yml and says to fill PACKAGES" \
+    sh -c "cmp -s .github/workflows/checks-swift.yml '$src/apple/github/checks-swift.yml' && grep -q 'PACKAGES' '$work/out'"
 check "project --apple adds scripts/hooks/pre-commit-swift" cmp -s scripts/hooks/pre-commit-swift "$src/apple/hooks/pre-commit-swift"
 check "a new project --apple gets no warning that the Swift step won't run" sh -c "! grep -q \"won't run\" '$work/out'"
 check "project --apple adds .swift-format and .swiftlint.yml" \

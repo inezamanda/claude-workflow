@@ -285,6 +285,9 @@ project() {
         copy apple/CODING.md CODING.md
         copy apple/swift-format.json .swift-format
         copy apple/swiftlint.yml .swiftlint.yml
+        copy apple/github/checks-swift.yml .github/workflows/checks-swift.yml
+        grep -q '^  PACKAGES: ""' .github/workflows/checks-swift.yml 2>/dev/null &&
+            say "to test Swift packages on Linux in CI, list them in PACKAGES in .github/workflows/checks-swift.yml"
         guard apple/hooks/pre-commit-swift scripts/hooks/pre-commit-swift
         grep -q pre-commit-swift scripts/hooks/pre-commit 2>/dev/null ||
             skip "the kept scripts/hooks/pre-commit doesn't run scripts/hooks/pre-commit-swift, so the Swift step won't run; replace it with $repo/core/hooks/pre-commit"
