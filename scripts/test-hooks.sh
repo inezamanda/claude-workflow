@@ -93,23 +93,25 @@ message 'fix: x\n\nCo-Authored-By: Claude <a@b.c>\n';   expect refuse "refused: 
 message 'fix: x\n\n# Generated with a tool\n';          expect refuse "refused: tool credit in a # line" commit_msg "$cm" "$refused"
 message 'fix: x\n\nCo-Authored-By: Sam <a@b.c>\n';      expect pass   "refused: human co-author still passes" commit_msg "$cm" "$refused"
 
-# scripts/hooks (the scrub check), in a throwaway repository with its own word list
+# scripts/hooks (the scrub check), in a throwaway repository with its own word list.
+# The refusals must be scrub.sh's own, so a hook that can't find it fails them.
 repo="$work/repo"
-fixture "$repo" && cp -R "$root/scripts" "$repo/" && printf 'Secretname\n\n' > "$repo/.git/info/scrub-words"
+fixture "$repo" && cp -R "$root/scripts" "$repo/" && mkdir -p "$repo/core/hooks" &&
+    cp "$root/core/hooks/scrub.sh" "$repo/core/hooks/" && printf 'Secretname\n\n' > "$repo/.git/info/scrub-words"
 scrub_msg() { (cd "$repo" && ${SH:-sh} scripts/hooks/commit-msg "$work/msg"); }
 scrub_staged() { (cd "$repo" && ${SH:-sh} scripts/hooks/pre-commit); }
 message 'chore: x\n';                                   expect pass   "scrub: clean message" scrub_msg
-message 'chore: x\n\n# secretname\n';                   expect refuse "scrub: word in a # line, other case" scrub_msg
+message 'chore: x\n\n# secretname\n';                   expect -m '^scrub: ' refuse "scrub: word in a # line, other case" scrub_msg
 message 'chore: x\n\nsee github.com/secretnameco\n';    expect pass   "scrub: listed word inside a longer word" scrub_msg
-message "chore: x\n\nSecretname's notes\n";             expect refuse "scrub: listed word before an apostrophe" scrub_msg
+message "chore: x\n\nSecretname's notes\n";             expect -m '^scrub: ' refuse "scrub: listed word before an apostrophe" scrub_msg
 message 'chore: x\n# ------------------------ >8 ------------------------\n+Secretname\n'
 expect pass "scrub: word only below the scissors line" scrub_msg
 (cd "$repo" && echo clean > a.txt && git add a.txt) && expect pass "scrub: clean staged file" scrub_staged
-(cd "$repo" && echo 'for Secretname' > b.txt && git add b.txt) && expect refuse "scrub: word in a staged line" scrub_staged
+(cd "$repo" && echo 'for Secretname' > b.txt && git add b.txt) && expect -m '^scrub: ' refuse "scrub: word in a staged line" scrub_staged
 (cd "$repo" && git rm -q --cached b.txt && echo x > Secretname.txt && git add Secretname.txt)
-expect refuse "scrub: word in a file name" scrub_staged
+expect -m '^scrub: ' refuse "scrub: word in a file name" scrub_staged
 (cd "$repo" && git rm -q --cached Secretname.txt) && printf '\n\n' > "$repo/.git/info/scrub-words"
-expect refuse "scrub: list of blank lines" scrub_staged
-rm "$repo/.git/info/scrub-words" && expect refuse "scrub: list missing" scrub_staged
+expect -m '^scrub: ' refuse "scrub: list of blank lines" scrub_staged
+rm "$repo/.git/info/scrub-words" && expect -m '^scrub: ' refuse "scrub: list missing" scrub_staged
 
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
