@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sets up Claude Code on this machine with this workflow. Safe to run again: each step is skipped when done.
 #
-#   install.sh                    the clone, ~/.claude/CLAUDE.md, the plugins and graphify
+#   install.sh                    the clone, ~/.claude/CLAUDE.md and AGENTS.md, the plugins and graphify
 #   install.sh project            the same, then the templates into the current folder
 #   install.sh project --apple    also the Apple coding guide and code smells, swift-lsp and the Swift skills
 #
@@ -35,7 +35,7 @@ find_repo() {
     done
     dir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)"
     new="$HOME/.agent-workflow" old="$HOME/.claude-workflow"
-    if [ -n "$dir" ] && [ -f "$dir/install.sh" ] && [ -f "$dir/core/CLAUDE.md" ]; then
+    if [ -n "$dir" ] && [ -f "$dir/install.sh" ] && [ -f "$dir/core/global/CLAUDE.md" ]; then
         repo="$dir"
     else
         repo="$new"
@@ -112,7 +112,13 @@ graphify_tool() {
 
 machine() {
     update_repo
-    link "$repo/core/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+    link "$repo/core/global/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+    # Claude Code resolves CLAUDE.md's @AGENTS.md from the link's target, core/global/. A link beside it, made
+    # by earlier versions, only loaded the rules a second time through plugins that look for ~/.claude/AGENTS.md.
+    old_agents="$HOME/.claude/AGENTS.md"
+    case "$(readlink "$old_agents" 2>/dev/null)" in
+        */core/global/AGENTS.md) rm "$old_agents" && say "removed the ~/.claude/AGENTS.md link; CLAUDE.md imports it already" ;;
+    esac
     link "$repo/install.sh" "$HOME/.local/bin/agent-workflow"
     # The command was called claude-workflow before the rename; its link only ever pointed at this script.
     old_command="$HOME/.local/bin/claude-workflow"

@@ -56,11 +56,12 @@ count() { grep -c "$1" "$STATE/log" 2>/dev/null || true; }
 base="/usr/bin:/bin"
 
 # From a clone, with an old CLAUDE.md in place
-fresh one && mkdir -p "$HOME/.claude" && echo old > "$HOME/.claude/CLAUDE.md"
+fresh one && mkdir -p "$HOME/.claude" && echo old > "$HOME/.claude/CLAUDE.md" && echo mine > "$HOME/.claude/AGENTS.md"
 PATH="$fakes:$HOME/.local/bin:$base" "$src/install.sh" > "$work/out" 2>&1
 check "first run succeeds" [ $? -eq 0 ]
-check "CLAUDE.md links to the clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$src/core/CLAUDE.md" ]
+check "CLAUDE.md links to the clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$src/core/global/CLAUDE.md" ]
 check "the old CLAUDE.md is kept as a backup" sh -c "cat '$HOME'/.claude/CLAUDE.md.backup.* | grep -qx old"
+check "an AGENTS.md of the user's own beside CLAUDE.md is kept" [ "$(cat "$HOME/.claude/AGENTS.md")" = mine ]
 check "agent-workflow links to install.sh" [ "$(readlink "$HOME/.local/bin/agent-workflow")" = "$src/install.sh" ]
 for p in caveman@caveman ponytail@ponytail superpowers@claude-plugins-official; do
     check "installs $p" [ "$(count "plugin install $p")" -eq 1 ]
@@ -82,8 +83,8 @@ check "the link doesn't make a second clone" [ ! -e "$HOME/.agent-workflow" ]
 fresh two && cd "$work" || exit 1
 AGENT_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" sh < "$src/install.sh" > "$work/out" 2>&1
 check "piped run succeeds" [ $? -eq 0 ]
-check "piped run clones to ~/.agent-workflow" [ -f "$HOME/.agent-workflow/core/CLAUDE.md" ]
-check "piped run links CLAUDE.md into that clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.agent-workflow/core/CLAUDE.md" ]
+check "piped run clones to ~/.agent-workflow" [ -f "$HOME/.agent-workflow/core/global/CLAUDE.md" ]
+check "piped run links CLAUDE.md into that clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.agent-workflow/core/global/CLAUDE.md" ]
 check "piped run warns that ~/.local/bin isn't on the PATH" grep -q "add ~/.local/bin to your PATH" "$work/out"
 echo new > "$src/new-file" && git -C "$src" add new-file && git -C "$src" -c user.name=t -c user.email=t@t commit -qm new
 PATH="$fakes:$base" "$HOME/.local/bin/agent-workflow" > "$work/out" 2>&1
@@ -91,14 +92,14 @@ check "a later run pulls the clone" [ -f "$HOME/.agent-workflow/new-file" ]
 
 # A clone from before the rename, at ~/.claude-workflow, run through its old command: it moves to ~/.agent-workflow
 fresh six && git clone -q "$src" "$HOME/.claude-workflow" && mkdir -p "$HOME/.claude" "$HOME/.local/bin" || exit 1
-ln -s "$HOME/.claude-workflow/core/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+ln -s "$HOME/.claude-workflow/core/global/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
 ln -s "$HOME/.claude-workflow/install.sh" "$HOME/.local/bin/claude-workflow"
 AGENT_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" "$HOME/.local/bin/claude-workflow" > "$work/out" 2>&1
 check "an old clone's run succeeds" [ $? -eq 0 ]
-check "the old clone moves to ~/.agent-workflow" [ -f "$HOME/.agent-workflow/core/CLAUDE.md" ]
+check "the old clone moves to ~/.agent-workflow" [ -f "$HOME/.agent-workflow/core/global/CLAUDE.md" ]
 check "the old clone is gone from ~/.claude-workflow" [ ! -e "$HOME/.claude-workflow" ]
 check "it says it moved the clone" grep -q "moved $HOME/.claude-workflow to" "$work/out"
-check "CLAUDE.md links into the moved clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.agent-workflow/core/CLAUDE.md" ]
+check "CLAUDE.md links into the moved clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.agent-workflow/core/global/CLAUDE.md" ]
 check "agent-workflow links into the moved clone" [ "$(readlink "$HOME/.local/bin/agent-workflow")" = "$HOME/.agent-workflow/install.sh" ]
 check "the old claude-workflow command is gone" [ ! -L "$HOME/.local/bin/claude-workflow" ]
 
@@ -109,6 +110,14 @@ check "with both clones, the run succeeds" [ $? -eq 0 ]
 check "with both clones, the old one stays" [ -d "$HOME/.claude-workflow/.git" ]
 check "with both clones, the new one stays" [ -d "$HOME/.agent-workflow/.git" ]
 check "with both clones, it says it left the old one" grep -q "left $HOME/.claude-workflow as it is" "$work/out"
+
+# A link from before the global instructions were split, to core/CLAUDE.md, which is gone: it's made again
+fresh eight && mkdir -p "$HOME/.claude" && ln -s "$src/core/CLAUDE.md" "$HOME/.claude/CLAUDE.md" || exit 1
+# An AGENTS.md link beside it, from before CLAUDE.md's import was known to resolve from the link's target
+ln -s "$src/core/global/AGENTS.md" "$HOME/.claude/AGENTS.md" || exit 1
+PATH="$fakes:$base" "$src/install.sh" > "$work/out" 2>&1
+check "a link from before the split is made again" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$src/core/global/CLAUDE.md" ]
+check "an AGENTS.md link into the clone is removed" sh -c "[ ! -e '$HOME/.claude/AGENTS.md' ] && [ ! -L '$HOME/.claude/AGENTS.md' ]"
 
 # Without Claude Code or uv: the links are still made, and it says what it skipped
 fresh three

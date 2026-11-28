@@ -6,7 +6,8 @@ This is how I work with [Claude Code](https://claude.com/claude-code): the workf
 
 ```
 core/                              for any project
-  CLAUDE.md                        global instructions for every session
+  global/AGENTS.md                 global instructions for every session, any tool
+  global/CLAUDE.md                 Claude Code's part: imports AGENTS.md, then the plugins and skills
   principles.md                    how work is planned, proven, reviewed and committed
   CONTRIBUTING.md                  commits, branches and pull requests (a template)
   agents/code-reviewer.md          a read-only reviewer for a whole branch
@@ -38,7 +39,7 @@ Or without cloning first, which clones to `~/.agent-workflow` for you:
 curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
 ```
 
-It links `~/.claude/CLAUDE.md` to `core/CLAUDE.md` (moving an old one to a dated backup), puts an `agent-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
+It links `~/.claude/CLAUDE.md` to `core/global/CLAUDE.md` (moving an old one to a dated backup), which imports `AGENTS.md` beside it, puts an `agent-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
 
 **In a new project**, at the root of its repository:
 
@@ -58,7 +59,7 @@ It never overwrites a file that's already there. With `--apple` it leaves out `d
 
 ## The plugins it installs
 
-`core/CLAUDE.md` sets how these work together. Each is someone else's project.
+`core/global/CLAUDE.md` sets how these work together. Each is someone else's project.
 
 - [superpowers](https://github.com/obra/superpowers): skills for brainstorming, planning, debugging and verifying.
 - [caveman](https://github.com/JuliusBrussee/caveman): terse replies in routine chat.
@@ -69,7 +70,7 @@ It never overwrites a file that's already there. With `--apple` it leaves out `d
 
 Optional, not installed: [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian), if you keep project notes in an Obsidian vault.
 
-Without the plugins, the principles and templates still work; drop the plugin section from `core/CLAUDE.md`.
+Without the plugins, the principles and templates still work; drop the plugin section from `core/global/CLAUDE.md`.
 
 ## This repository's own hooks
 
