@@ -145,7 +145,8 @@ check "an unknown argument changes nothing" [ ! -e "$HOME/.claude" ]
 fresh five && mkdir -p "$work/p1" && cd "$work/p1" && git init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project succeeds" [ $? -eq 0 ]
-for f in AGENTS.md docs/principles.md CONTRIBUTING.md scripts/hooks/commit-msg .claude/agents/code-reviewer.md \
+for f in AGENTS.md docs/principles.md CONTRIBUTING.md scripts/hooks/commit-msg scripts/hooks/pre-commit \
+    scripts/hooks/checks.sh scripts/hooks/scrub.sh .claude/agents/code-reviewer.md \
     .github/workflows/review.yml .github/pull_request_template.md \
     docs/templates/spec.md docs/templates/decisions.md docs/templates/edge-list.md .agents/skills/README.md; do
     check "project adds $f" [ -f "$f" ]
@@ -160,7 +161,9 @@ check "project's AGENTS.md lists CONTRIBUTING.md and docs/principles.md to read"
 check "project's AGENTS.md has no marker left" sh -c "! grep -q 'files to read' AGENTS.md"
 check "project's CLAUDE.md imports AGENTS.md, then CONTRIBUTING.md and docs/principles.md" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@docs/principles.md')" ]
-check "project's commit-msg hook is executable" [ -x scripts/hooks/commit-msg ]
+check "project: adds the hooks" sh -c "[ -x scripts/hooks/commit-msg ] && [ -x scripts/hooks/pre-commit ] && [ -x scripts/hooks/scrub.sh ] && cmp -s scripts/hooks/checks.sh '$src/core/hooks/checks.sh'"
+check "project: says how to make the scrub list" grep -qF ".git/info/scrub-words" "$work/out"
+check "a new project's hooks get no warning that they differ" sh -c "! grep -q 'differs' '$work/out'"
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
 check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
@@ -258,7 +261,7 @@ check "private notes: a second run adds nothing to .gitignore" [ "$(wc -l < .git
 mkdir -p "$work/p10/docs" && cd "$work/p10" && git init -q && git -C docs init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "notes in a repository of their own: AGENTS.md is git-ignored" git check-ignore -q AGENTS.md
-check "notes in a repository of their own: it says to ignore docs/" grep -qF "add /docs/ to .gitignore" "$work/out"
+check "project: appends /docs/ for a docs repository" grep -qxF /docs/ .gitignore
 # The same before git init: a second run still adds nothing to .gitignore
 mkdir -p "$work/p12/docs" && cd "$work/p12" && git -C docs init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
@@ -284,6 +287,22 @@ PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: keeps a CONTRIBUTING.md without a Types line" [ "$(cat CONTRIBUTING.md)" = '# How we work' ]
 check "project: warns when CONTRIBUTING.md has no Types line" grep -q 'Types:' "$work/out"
 
+# Private notes with a docs/ file tracked: still private
+mkdir -p "$work/p14/docs" && cd "$work/p14" && git init -q && printf '/docs/\n' > .gitignore && echo x > docs/x.md &&
+    git add -f docs/x.md || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: private notes with a docs/ file tracked" grep -qxF /AGENTS.md .gitignore
+
+# Hooks kept from an older setup: a warning when one differs, except in commit-msg's ALLOW_AI_CREDIT line
+mkdir -p "$work/p15/scripts/hooks" && cd "$work/p15" && git init -q && printf '#!/bin/sh\nexit 0\n' > scripts/hooks/commit-msg || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: keeps an older hook" [ "$(cat scripts/hooks/commit-msg)" = "$(printf '#!/bin/sh\nexit 0')" ]
+check "project: warns about an older hook" grep -q 'scripts/hooks/commit-msg differs' "$work/out"
+mkdir -p "$work/p16/scripts/hooks" && cd "$work/p16" && git init -q &&
+    sed 's/^ALLOW_AI_CREDIT=1$/ALLOW_AI_CREDIT=0/' "$src/core/hooks/commit-msg" > scripts/hooks/commit-msg || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: ALLOW_AI_CREDIT doesn't count" sh -c "grep -q '^ALLOW_AI_CREDIT=0' scripts/hooks/commit-msg && ! grep -q 'differs' '$work/out'"
+
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
@@ -293,6 +312,7 @@ check "it says to set core.hooksPath after git init" grep -q "after git init" "$
 mkdir -p "$work/p5" && cd "$work/p5" && git init -q && git config core.hooksPath .githooks || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "a hooksPath of the project's own is kept" [ "$(git config core.hooksPath)" = .githooks ]
+check "project: names every hook to move" sh -c "grep 'core.hooksPath is already' '$work/out' | grep 'commit-msg' | grep 'pre-commit' | grep 'checks.sh' | grep -q 'scrub.sh'"
 
 # Refusals
 mkdir -p "$work/p1/sub" && cd "$work/p1/sub" && PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1

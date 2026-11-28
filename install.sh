@@ -145,6 +145,24 @@ copy() {
     mkdir -p "$(dirname "$2")" && cp "$repo/$1" "$2" && say "added $2" || fail "couldn't add $2"
 }
 
+# guard <from, in the clone> <to>: copy, and when a copy is kept, warn if it differs from the clone's, which may
+# check more by now. It's never replaced: a project may have its own. commit-msg's ALLOW_AI_CREDIT is the project's.
+guard() {
+    copy "$1" "$2"
+    [ "$(grep -v '^ALLOW_AI_CREDIT=' "$2")" = "$(grep -v '^ALLOW_AI_CREDIT=' "$repo/$1")" ] ||
+        skip "$2 differs from $repo/$1, which may check more by now; compare them with: diff $2 $repo/$1"
+}
+
+# ignore <path> <why>: appends /<path> to .gitignore, unless it's ignored already.
+ignore() {
+    # check-ignore fails outside a repository, so the line itself is looked for too.
+    grep -qxF "/$1" .gitignore 2>/dev/null && return
+    git check-ignore -q --no-index "$1" 2>/dev/null && return
+    # A last line without a newline would run into the new one.
+    [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
+    printf '/%s\n' "$1" >> .gitignore && say "added /$1 to .gitignore, $2" || fail "couldn't add /$1 to .gitignore"
+}
+
 # above <file in the clone>: prints the first CLAUDE.md in a folder above this one with the same text, if any.
 # Claude Code loads those too, so a copy here would load the same rules twice.
 above() {
@@ -168,8 +186,9 @@ project() {
     fi
     # The notes are private when docs/ is a repository of its own or git-ignored. Then AGENTS.md and CLAUDE.md, which
     # name files in docs/, stay out of the public repository too, and the union line goes in docs/ beside the log.
+    # --no-index, since a tracked file in docs/ would otherwise make it count as not ignored.
     private=0
-    { [ -e docs/.git ] || git check-ignore -q docs/ 2>/dev/null; } && private=1
+    { [ -e docs/.git ] || git check-ignore -q --no-index docs/ 2>/dev/null; } && private=1
 
     # Before the rename the principles were copied as docs/CLAUDE.md, often adapted past recognition, so any
     # docs/CLAUDE.md is taken for them: renamed by hand, never loaded twice.
@@ -183,7 +202,9 @@ project() {
     copy core/CONTRIBUTING.md CONTRIBUTING.md
     grep -q '^- \*\*Types:\*\*' CONTRIBUTING.md 2>/dev/null ||
         skip "CONTRIBUTING.md has no \"- **Types:**\" line, so scripts/hooks/commit-msg refuses every commit; add one that lists the types in backticks, as $repo/core/CONTRIBUTING.md does"
-    copy core/hooks/commit-msg scripts/hooks/commit-msg
+    for f in commit-msg pre-commit checks.sh scrub.sh; do
+        guard "core/hooks/$f" "scripts/hooks/$f"
+    done
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml
     copy core/github/pull_request_template.md .github/pull_request_template.md
@@ -228,18 +249,12 @@ project() {
     # private files to add to them.
     if [ "$private" = 1 ]; then
         for f in AGENTS.md CLAUDE.md; do
-            # check-ignore fails outside a repository, so the line itself is looked for too.
-            if ! grep -qxF "/$f" .gitignore 2>/dev/null && ! git check-ignore -q --no-index "$f" 2>/dev/null; then
-                # A last line without a newline would run into the new one.
-                [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
-                printf '/%s\n' "$f" >> .gitignore && say "added /$f to .gitignore, since it names the private notes" ||
-                    fail "couldn't add /$f to .gitignore"
-            fi
+            ignore "$f" "since it names the private notes"
             git ls-files --error-unmatch "$f" >/dev/null 2>&1 &&
                 skip "$f is tracked, but where the notes are private it mustn't be; untrack it first with: git rm --cached $f"
         done
-        [ -e docs/.git ] && ! git check-ignore -q docs/ 2>/dev/null &&
-            skip "docs/ is a repository of its own; add /docs/ to .gitignore, or git records it here as an embedded repository"
+        # So a linked worktree, which has no docs/, still finds the notes private.
+        [ -e docs/.git ] && ignore docs/ "since docs/ is a repository of its own, which git would record here as an embedded one"
         grep -qxF "docs/decisions.md merge=union" .gitattributes 2>/dev/null &&
             skip "the root .gitattributes still merges the decisions log, which is in the private notes now; remove its line docs/decisions.md merge=union"
     fi
@@ -285,8 +300,11 @@ project() {
         if [ -z "$hooks" ]; then
             git config core.hooksPath scripts/hooks && say "set core.hooksPath to scripts/hooks" || fail "couldn't set core.hooksPath"
         elif [ "$hooks" != scripts/hooks ]; then
-            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg there to use it"
+            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit, checks.sh and scrub.sh there to use them"
         fi
+        list="$(git rev-parse --git-path info/scrub-words)"
+        grep -q '[^[:space:]]' "$list" 2>/dev/null ||
+            skip "the hooks refuse every commit until $list lists the words to keep out of the repository, one per line, such as real names; it stays in .git, so it's never committed"
     fi
 
     [ "$apple" = 1 ] && plugins \
