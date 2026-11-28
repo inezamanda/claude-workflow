@@ -41,7 +41,8 @@ fixture() {
 }
 
 # commit_msg <repository> [hook]: runs the commit-msg hook (core's by default) on $work/msg, as git would.
-commit_msg() { (cd "$1" && ${SH:-sh} "${2:-$hook}" "$work/msg"); }
+# Git hands hooks GIT_EDITOR, ":" when no editor ran (-m, -F); these run as if one had.
+commit_msg() { (cd "$1" && GIT_EDITOR=vi ${SH:-sh} "${2:-$hook}" "$work/msg"); }
 
 # core/hooks/commit-msg, in a repository with the template's CONTRIBUTING.md
 hook="$root/core/hooks/commit-msg"
@@ -134,30 +135,39 @@ expect pass "private: removing a docs/ file passes" pre_commit "$ph"
 # line <file> <text>: the file staged with one line, from HEAD's state
 line() { restore "$ph" && mkdir -p "$ph/$(dirname "$1")" && printf '%s\n' "$2" > "$ph/$1" && git -C "$ph" add "$1" || exit 1; }
 line a.md 'see docs/plan.md';                           expect -m 'see docs/plan.md' refuse "private: line names docs/" pre_commit "$ph"
-line a.md '[plan](../docs/plan.md)';                    expect refuse "private: ../docs/ link" pre_commit "$ph"
+line a.md '[plan](../docs/plan.md)';                    expect -m '../docs/plan.md' refuse "private: ../docs/ link" pre_commit "$ph"
 line a.md 'kept in sub/docs/ instead';                  expect pass   "private: sub/docs/ passes" pre_commit "$ph"
 line .gitignore "$(printf '/docs/\ndocs/')";            expect pass   "private: .gitignore may" pre_commit "$ph"
 line a.md 'see https://example.com/docs/a';             expect pass   "private: URL passes" pre_commit "$ph"
-line a.md 'see https://example.com/docs/a and docs/b';  expect refuse "private: URL doesn't exempt the line" pre_commit "$ph"
+line a.md 'see https://example.com/docs/a and docs/b';  expect -m 'and docs/b' refuse "private: URL doesn't exempt the line" pre_commit "$ph"
 line a.md 'see docs/plan.md' && printf '* -diff\n' > "$ph/.gitattributes" && git -C "$ph" add .gitattributes || exit 1
-expect refuse "private: -diff doesn't hide lines" pre_commit "$ph"
+expect -m '^see docs/plan.md' refuse "private: -diff doesn't hide lines" pre_commit "$ph"
 # The space puts docs/ at a word start in the +++ header, the one place a header could name it.
+for t in 'NOTES=docs/plan.md' '--notes=docs/x.md' 'git show HEAD:docs/plan.md' '[a.md,docs/plan.md]' \
+    '|[site](https://x.org/a)|[plan](docs/plan.md)|' '<https://x.org/a>docs/plan.md' '[site](https://x.org/a),docs/plan.md'; do
+    line a.md "$t" && expect -m 'point into docs/' refuse "private: $t" pre_commit "$ph"
+done
+line a.md 'see https://x.org/a|b/docs/c';               expect pass   "private: a URL ends at a bar, not inside its own path" pre_commit "$ph"
 rm "$ph/.gitattributes" && line 'sub/old docs/a.md' 'x'; expect pass  "private: diff headers aren't lines" pre_commit "$ph"
 restore "$ph"
 message 'docs: plan\n\nsee docs/plan.md\n';             expect -m 'docs/plan.md' refuse "private: message names docs/" commit_msg "$ph"
 message 'chore: untrack the notes\n\n# Changes to be committed:\n#\tdeleted:    docs/x.md\n'
 expect pass "private: untracking a docs/ file through the editor passes" commit_msg "$ph"
+restore "$ph" && echo z > "$ph/z.txt" && git -C "$ph" add z.txt || exit 1
+expect -m '# see docs/plan.md' refuse "private: a # line kept by -m names docs/" \
+    git -C "$ph" -c core.hooksPath="$root/core/hooks" commit -q -m 'fix: z' -m '# see docs/plan.md'
+restore "$ph"
 
 # docs/ a repository of its own, staged as a gitlink; a docs symlink beside HEAD's /docs/ line
 pg="$work/pg" && fixture "$pg" && git -C "$pg" commit -qm init && git init -q "$pg/docs" &&
     git -C "$pg/docs" commit -q --allow-empty -m notes && git -C "$pg" add docs 2>/dev/null || exit 1
-expect -m 'docs' refuse "private: docs/ gitlink" pre_commit "$pg"
+expect -m 'unstage: docs ' refuse "private: docs/ gitlink" pre_commit "$pg"
 ps="$work/ps" && fixture "$ps" && printf '/docs/\n' > "$ps/.gitignore" && git -C "$ps" add .gitignore &&
     git -C "$ps" commit -qm init && mkdir "$ps/real" && ln -s real "$ps/docs" && git -C "$ps" add docs || exit 1
-expect -m 'docs' refuse "private: docs symlink" pre_commit "$ps"
+expect -m 'unstage: docs ' refuse "private: docs symlink" pre_commit "$ps"
 pf="$work/pf" && fixture "$pf" && git init -q "$pf/docs" && git -C "$pf/docs" commit -q --allow-empty -m notes &&
     git -C "$pf" add -A 2>/dev/null || exit 1
-expect -m 'docs' refuse "private: first commit with the docs gitlink" pre_commit "$pf"
+expect -m 'unstage: .*docs ' refuse "private: first commit with the docs gitlink" pre_commit "$pf"
 
 # Notes public: no ignored docs/, no docs repository
 pp="$work/pp" && fixture "$pp" && git -C "$pp" commit -qm init && mkdir "$pp/docs" && echo x > "$pp/docs/x.md" &&
@@ -200,8 +210,8 @@ change() { r="$1" && shift && restore "$r" && for f; do mkdir -p "$r/$(dirname "
 change "$pr" a.txt
 message 'fix: x\n';                                     expect -m 'a.txt' refuse "protected: no line" commit_msg "$pr"
 message 'fix: x\n\nProtected: the owner asked for it\n'; expect pass  "protected: line passes" commit_msg "$pr"
-message 'fix: x\n\nProtected:   \n';                    expect refuse "protected: empty reason" commit_msg "$pr"
-message 'fix: x\n\n# Protected: the owner asked\n';     expect refuse "protected: comment doesn't count" commit_msg "$pr"
+message 'fix: x\n\nProtected:   \n';                    expect -m 'CODEOWNERS protects a.txt' refuse "protected: empty reason" commit_msg "$pr"
+message 'fix: x\n\n# Protected: the owner asked\n';     expect -m 'CODEOWNERS protects a.txt' refuse "protected: comment doesn't count" commit_msg "$pr"
 printf '/docs/\n' > "$pr/.gitignore"
 message 'fix: x\n\nProtected: see docs/why.md\n';       expect -m 'docs/why.md' refuse "protected: reason names docs/" commit_msg "$pr"
 rm "$pr/.gitignore"
@@ -213,6 +223,16 @@ printf 'b.txt\n' > "$pr/.gitignore" && change "$pr" b.txt; expect pass "protecte
 rm "$pr/.gitignore" && printf 'c.txt\n' > "$work/excludes" && git config --global core.excludesFile "$work/excludes" || exit 1
 change "$pr" c.txt;                                     expect pass   "protected: global excludes ignored" commit_msg "$pr"
 git config --global --unset core.excludesFile
+mkdir -p "$work/tpl/hooks" && git config --global init.templateDir "$work/tpl" && change "$pr" a.txt || exit 1
+expect -m 'CODEOWNERS protects a.txt' refuse "protected: a git template without info/" commit_msg "$pr"
+git config --global --unset init.templateDir
+# A git whose check-ignore dies, as a fatal error would make it.
+mkdir -p "$work/badgit" && printf '#!/bin/sh\ncase " $* " in *" check-ignore "*) exit 128 ;; esac\nexec %s "$@"\n' "$(command -v git)" > "$work/badgit/git" &&
+    chmod +x "$work/badgit/git" || exit 1
+expect -m "couldn't match the changed paths" refuse "protected: a match that can't run refuses" env PATH="$work/badgit:$PATH" sh -c "cd '$pr' && GIT_EDITOR=vi ${SH:-sh} '$hook' '$work/msg'"
+restore "$ph" && : > "$ph/.gitignore" && echo n > "$ph/docs/n.md" && git -C "$ph" add docs/n.md || exit 1
+expect -m 'unstage: docs/n.md' refuse "private: a match that can't run counts as private" env PATH="$work/badgit:$PATH" sh -c "cd '$ph' && ${SH:-sh} '$pre'"
+restore "$ph" && rm "$ph/docs/n.md"
 change "$pr" d/x.txt;                                   expect -m 'd/x.txt' refuse "protected: ! lines dropped" commit_msg "$pr"
 restore "$pr" && git -C "$pr" rm -q --cached a.txt || exit 1
 expect -m 'a.txt' refuse "protected: delete" commit_msg "$pr"
@@ -278,6 +298,8 @@ expect pass "claude: empty path asks" asks "$(edit "")"
 export JQ=/nonexistent/jq && expect pass "claude: no jq asks" asks "$(edit "$cl/b.txt")" && unset JQ
 mkdir -p "$work/nochecks" || exit 1
 expect pass "claude: no checks.sh asks" asks "$(edit "$cl/b.txt")" "$work/nochecks"
+oldpath="$PATH" && export PATH="$work/badgit:$PATH" && expect pass "claude: a match that can't run asks" asks "$(edit "$cl/b.txt")"
+export PATH="$oldpath"
 
 # core/checks/ci-checks.sh, which runs the hooks on each commit of a pull request, with the base's hooks and CODEOWNERS.
 # Commits are made without hooks, as a push with --no-verify would bring them.
@@ -342,8 +364,15 @@ expect -m 'CHECK_COMMIT' refuse "ci: an old hook fails" ci_run
 ci_repo ci-ch && git -C "$r" rm -rq scripts && cmt -m 'chore: no hooks' && cibase="$(git -C "$r" rev-parse HEAD)" && put b.txt b && cmt -m 'feat: one'
 expect -m 'scripts/hooks' refuse "ci: no hooks fails" ci_run
 ci_repo ci-cg2 && git -C "$r" checkout -q -b x && put b.txt b && cmt -m 'feat: one' && git -C "$r" checkout -q feat &&
-    put c.txt c && cmt -m 'feat: two' && git -C "$r" merge -q --no-ff -m 'bad merge' x || exit 1
-expect pass "ci: merges skipped" ci_run
+    put c.txt c && cmt -m 'feat: two' && git -C "$r" merge -q --no-ff -m 'bad merge' x && put a.txt b && cmt -m 'fix: a' -m 'Protected: test' &&
+    git -C "$r" checkout -q x && git -C "$r" merge -q --no-ff -m 'Merge feat into x' feat || exit 1
+expect pass "ci: a merge's subject and changes aren't checked" ci_run
+git -C "$r" checkout -q feat && git -C "$r" merge -q --no-ff -m 'Merge x' -m 'see docs/plan.md' x && short="$(git -C "$r" rev-parse --short HEAD)" || exit 1
+expect -m "^$short see docs/plan.md" refuse "ci: a merge's message is checked" ci_run
+ci_repo ci-fx && put b.txt b && cmt -m 'feat: add b' && put b.txt c && cmt -m 'fixup! feat: add b'
+expect -m "^$short commit-msg: the subject" refuse "ci: a fixup! subject fails" ci_run
+ci_repo ci-mp && put b.txt b && cmt -m 'Merge the two parsers'
+expect -m "^$short commit-msg: the subject" refuse "ci: a Merge subject on a plain commit fails" ci_run
 ci_repo ci-cz && rm "$r/.git/info/scrub-words" && put b.txt 'for Secretname' && cmt -m 'feat: one'
 expect pass "ci: no scrub in CI" ci_run
 ci_repo ci-cmn && git -C "$r" checkout -q -b main && put b.txt b && cmt -m 'feat: one'

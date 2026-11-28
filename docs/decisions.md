@@ -43,3 +43,4 @@ The log is append-only: a changed decision gets a new row that names the row it 
 | Raised | Question | Where things stand |
 | --- | --- | --- |
 | 2026-11-28 | Sessions never message each other; they share through the maintainer, the notes and `main`. | Proposed, not yet confirmed. |
+| 2026-11-28 | Guardrails | Replaces the row on Claude's `PreToolUse` hook only in its tool list: the hook covers Edit, Write and NotebookEdit. There's no MultiEdit tool. | Checked with `claude -p` at commit 13a (2.1.332): the edit tools are Edit, NotebookEdit and Write. | agent (branch 3 review) |

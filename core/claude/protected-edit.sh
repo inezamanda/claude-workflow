@@ -3,7 +3,7 @@
 # since a commit that changes it needs a "Protected: <why>" line. The path is matched against the checkout that
 # holds it, a worktree under .claude/worktrees/ or beside the project included, with that checkout's HEAD:CODEOWNERS,
 # using the main checkout's scripts/hooks/checks.sh, so there's one matcher. A path in no git checkout gets no
-# answer, so Claude's own rules apply. When it can't check (no path, no jq, no checks.sh), it asks.
+# answer, so Claude's own rules apply. When it can't check (no path, no jq, no checks.sh, a match that can't run), it asks.
 # Install it as .claude/hooks/protected-edit.sh, with the block in core/claude/settings.json.
 
 ask() {
@@ -33,6 +33,7 @@ top="$(git -C "$dir" rev-parse --show-toplevel)" && cd "$top" ||
 . "$checks"
 patterns="$(owner_patterns)"
 [ -n "$patterns" ] || exit 0
-[ -n "$(printf '%s\0' "$prefix$rest" | matching "$patterns")" ] &&
-    ask "$prefix$rest is listed in CODEOWNERS, so a commit that changes it needs a \"Protected: <why>\" line"
+match="$(printf '%s\0' "$prefix$rest" | matching "$patterns" 2>/dev/null)"
+[ $? -le 1 ] || ask "protected-edit.sh couldn't check this edit: matching $prefix$rest against CODEOWNERS failed"
+[ -n "$match" ] && ask "$prefix$rest is listed in CODEOWNERS, so a commit that changes it needs a \"Protected: <why>\" line"
 exit 0

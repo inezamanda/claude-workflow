@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs the hooks on every commit of a pull request but its merges, so a commit made with --no-verify, or in a clone
-# without the hooks, is still checked. Each commit is checked in full: its changes, and its message as stored.
+# Runs the hooks on every commit of a pull request, so a commit made with --no-verify, or in a clone without the
+# hooks, is still checked. Each commit is checked in full: its changes, and its message as stored. A merge has only
+# its message checked (CHECK_MERGE): its changes are the other side's, checked on their own commits.
 # The hooks and CODEOWNERS come from the base, so no commit can switch off its own check. A base whose hooks were
 # set up before CI (they don't know CHECK_COMMIT) has the head's used instead, with a notice, so the pull request that
 # upgrades them can pass.
@@ -32,11 +33,12 @@ fi
 
 # Each line a hook prints starts with the commit's short hash.
 fail=0 count=0
-for c in $(git rev-list --reverse --no-merges "$base..$head"); do
-    count=$((count + 1)) short="$(git rev-parse --short "$c")"
+for c in $(git rev-list --reverse "$base..$head"); do
+    count=$((count + 1)) short="$(git rev-parse --short "$c")" merge="" hooks="pre-commit commit-msg"
+    git rev-parse -q --verify "$c^2" >/dev/null && merge=1 hooks=commit-msg
     git log -1 --format=%B "$c" > "$tmp/msg" || exit 2
-    for hook in pre-commit commit-msg; do
-        out="$(CHECK_COMMIT="$c" CHECK_BASE="$base" ${SH:-sh} "$dir/$hook" "$tmp/msg" 2>&1 >/dev/null)" || fail=1
+    for hook in $hooks; do
+        out="$(CHECK_COMMIT="$c" CHECK_BASE="$base" CHECK_MERGE="$merge" ${SH:-sh} "$dir/$hook" "$tmp/msg" 2>&1 >/dev/null)" || fail=1
         [ -z "$out" ] || printf '%s\n' "$out" | sed "s/^/$short /" >&2
     done
 done

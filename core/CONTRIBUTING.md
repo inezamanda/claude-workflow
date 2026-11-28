@@ -50,13 +50,13 @@ Keep moves and reformatting in their own commits, separate from changes in behav
 
 Don't commit to `main`. Each piece of work gets its own branch, named `type/scope-topic` with the same types and scopes as commits, like `feat/sync-retry` or `fix/editor-draft`. Keep the small commits on that branch, then open a pull request into `main` that says what changed and which tests you ran; GitHub fills its description from `.github/pull_request_template.md`.
 
-`.github/workflows/checks.yml` runs the hooks again on every commit of each pull request, merges aside, with the base's copies of the hooks and of `CODEOWNERS`, so no commit can switch off its own check. A commit that drops a path from `CODEOWNERS` and a later one in the same pull request that changes it without a `Protected:` line pass locally, but fail there. Protect `main` with a ruleset (Settings, Rules, Rulesets): require a pull request, block force pushes, and require the status check `checks`, so a red run blocks the merge.
+`.github/workflows/checks.yml` runs the hooks again on every commit of each pull request, with the base's copies of the hooks and of `CODEOWNERS`, so no commit can switch off its own check. A commit that drops a path from `CODEOWNERS` and a later one in the same pull request that changes it without a `Protected:` line pass locally, but fail there. Protect `main` with a ruleset (Settings, Rules, Rulesets): require a pull request, block force pushes, and require the status check `checks`, so a red run blocks the merge.
 
 What the checks can't catch:
 
-- `--no-verify`, or a commit from a clone without the hooks: only CI catches it;
-- a pull request that changes `checks.yml` itself, which runs as the pull request has it;
-- a protected change made while resolving a merge conflict;
+- `--no-verify`, or a commit from a clone without the hooks: only CI catches it, after the push;
+- a pull request that changes `checks.yml` itself, which runs as the pull request has it. Closing that takes an organization's required workflow (GitHub Team or Enterprise) or a second reviewer;
+- a merge commit's own changes, locally or in CI, such as a protected change, a notes file or a line pointing into the notes added while resolving a conflict, here or in GitHub's conflict editor. CI checks only a merge's message;
 - an edit made from the shell rather than Claude's Edit tool: nothing asks first, though the commit still needs its `Protected:` line;
 - a pull request whose base has no hooks, or older ones, is checked with its own, and one whose base has no `CODEOWNERS` protects nothing;
 - git matches `CODEOWNERS` patterns more widely than GitHub: `a/*` also covers `a/b/c`, and a line without an owner still protects its paths.

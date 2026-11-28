@@ -34,9 +34,14 @@ if contributing="$(git cat-file blob "$CHECK_COMMIT:CONTRIBUTING.md" 2>/dev/null
     staged=1 types="$(names Types)" scopes="$(names Scopes)"
 fi
 
+# Subjects git writes itself skip the type check. In CI a fixup or a "Merge" subject on a plain commit is a
+# mistake, since it would land on main as it is; a real merge's subject is git's or GitHub's.
+exempt='^(Merge |Revert "|(fixup|squash|amend)! )'
+[ -n "$CHECK_COMMIT" ] && exempt='^Revert "'
+[ -n "$CHECK_MERGE" ] && exempt=''
 if [ -z "$subject" ]; then
     refuse "the message is empty"
-elif ! printf '%s\n' "$subject" | grep -Eq '^(Merge |Revert "|(fixup|squash|amend)! )'; then
+elif ! printf '%s\n' "$subject" | grep -Eq "$exempt"; then
     if [ "$staged" = 0 ]; then
         refuse "there's no CONTRIBUTING.md in the commit; its \"- **Types:**\" line lists the commit types"
     elif [ -z "$types" ]; then
@@ -66,19 +71,27 @@ if [ "$ALLOW_AI_CREDIT" = 0 ]; then
 fi
 printf '%s\n' "$msg" | scrub "the commit message" || fail=1
 
-# Skipped in a merge: it brings the other side's protected changes, which CI checks on their own commits.
+# Skipped in a merge (CHECK_MERGE in CI): it brings the other side's protected changes, which CI checks on their own
+# commits.
 # shortcut: under --amend or a reword HEAD is already the commit, so paths only it changed are missed; CI checks
 # each commit in full.
-if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
-    protected="$(protected_paths | tr '\n' ' ')"
-    [ -n "$protected" ] && ! printf '%s\n' "$msg" | git stripspace --strip-comments | grep -q '^Protected: [^[:space:]]' &&
-        refuse "CODEOWNERS protects $protected; say why in a line \"Protected: <why>\""
+if [ -z "$CHECK_MERGE" ] && ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+    if ! protected="$(protected_paths)"; then
+        refuse "couldn't match the changed paths against CODEOWNERS, so the commit can't be checked"
+    elif [ -n "$protected" ] && ! printf '%s\n' "$msg" | git stripspace --strip-comments | grep -q '^Protected: [^[:space:]]'; then
+        refuse "CODEOWNERS protects $(printf '%s\n' "$protected" | tr '\n' ' '); say why in a line \"Protected: <why>\""
+    fi
 fi
 
-# Locally without comments: the editor's status lines name the files, deleted ones included. In CI the stored
-# message is read in full, since all of it is public: with -m, git keeps lines that start with #.
+# After an editor, without comments: its status lines name the files, deleted ones included. With -m or -F (git sets
+# GIT_EDITOR to ":" when no editor runs) and in CI, the message is read in full: git keeps lines that start with #
+# then, and all of what's stored is public.
 if notes_private; then
-    if [ -n "$CHECK_COMMIT" ]; then public="$(cat "$1")"; else public="$(printf '%s\n' "$msg" | git stripspace --strip-comments)"; fi
+    if [ -n "$CHECK_COMMIT" ] || [ "$GIT_EDITOR" = : ]; then
+        public="$(cat "$1")"
+    else
+        public="$(printf '%s\n' "$msg" | git stripspace --strip-comments)"
+    fi
     links="$(printf '%s\n' "$public" | notes_links)"
     [ -n "$links" ] && refuse "the notes are private here, so the message may not point into docs/:
 $links"
