@@ -185,6 +185,8 @@ PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "project --apple succeeds" [ $? -eq 0 ]
 check "project --apple adds CODING.md" [ -f CODING.md ]
 check "project --apple adds the code smells" [ -f docs/code-smells.md ]
+check "project --apple adds scripts/hooks/pre-commit-swift" cmp -s scripts/hooks/pre-commit-swift "$src/apple/hooks/pre-commit-swift"
+check "a new project --apple gets no warning that the Swift step won't run" sh -c "! grep -q \"won't run\" '$work/out'"
 check "project --apple adds .swift-format and .swiftlint.yml" \
     sh -c "cmp -s .swift-format '$src/apple/swift-format.json' && cmp -s .swiftlint.yml '$src/apple/swiftlint.yml'"
 check "project --apple's AGENTS.md lists all four to read" \
@@ -322,6 +324,17 @@ check "project --apple keeps its own .swiftlint.yml" [ "$(cat .swiftlint.yml)" =
 mkdir -p "$work/p18" && cd "$work/p18" && git init -q && printf '* @us\n' > CODEOWNERS || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: warns about a catch-all line" grep -q 'catch-all' "$work/out"
+
+# --apple with hooks kept from before the Swift step: a differing pre-commit-swift warns, and a pre-commit without
+# the hook point is named, since Swift files would never be linted
+mkdir -p "$work/p25/scripts/hooks" && cd "$work/p25" && git init -q && printf '#!/bin/sh\nexit 0\n' > scripts/hooks/pre-commit &&
+    printf '#!/bin/sh\nexit 0\n' > scripts/hooks/pre-commit-swift || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple: a kept pre-commit-swift that differs warns" grep -q 'scripts/hooks/pre-commit-swift differs' "$work/out"
+check "project --apple with an old pre-commit says the Swift step won't run" grep -q "pre-commit doesn't run.*pre-commit-swift" "$work/out"
+mkdir -p "$work/p26" && cd "$work/p26" && git init -q && git config core.hooksPath .githooks || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple: names pre-commit-swift among the hooks to move" grep -q 'core.hooksPath is already.*pre-commit-swift' "$work/out"
 
 # Claude's hook: settings.json is written when there's none; one of the project's own is kept, and the hook block
 # printed unless it already names the hook.

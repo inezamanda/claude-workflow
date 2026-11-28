@@ -118,7 +118,7 @@ Before building a view, a style or a helper, check `DesignSystem/` and the featu
 
 ## 9. Style and comments
 
-swift-format handles layout and SwiftLint handles naming, size and the rules above that a tool can check. Before you commit:
+swift-format handles layout and SwiftLint handles naming, size and the rules above that a tool can check, with the `.swift-format` and `.swiftlint.yml` at the root. The pre-commit hook runs both on the staged Swift files, so stage each file whole. To run them by hand:
 
 ```sh
 swift format lint --strict -r <folders>

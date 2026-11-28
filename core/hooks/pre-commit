@@ -40,4 +40,7 @@ if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
     [ "$size" -gt 200 ] &&
         echo "pre-commit: $size lines changed outside tests; past 200, think about splitting the commit" >&2
 fi
+# A project's Swift step (agent-workflow project --apple), run as a process of its own: sourced, its checks.sh would
+# reset fail and its exit would end this hook. Not in CI, where checks-swift.yml lints instead.
+[ -z "$CHECK_COMMIT" ] && [ -f "$hooks_dir/pre-commit-swift" ] && { ${SH:-sh} "$hooks_dir/pre-commit-swift" || fail=1; }
 exit $fail

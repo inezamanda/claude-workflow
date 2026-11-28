@@ -285,6 +285,9 @@ project() {
         copy apple/CODING.md CODING.md
         copy apple/swift-format.json .swift-format
         copy apple/swiftlint.yml .swiftlint.yml
+        guard apple/hooks/pre-commit-swift scripts/hooks/pre-commit-swift
+        grep -q pre-commit-swift scripts/hooks/pre-commit 2>/dev/null ||
+            skip "the kept scripts/hooks/pre-commit doesn't run scripts/hooks/pre-commit-swift, so the Swift step won't run; replace it with $repo/core/hooks/pre-commit"
         reads="CONTRIBUTING.md CODING.md docs/principles.md"
         if smells="$(above apple/CLAUDE.md)"; then
             skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
@@ -350,7 +353,8 @@ project() {
         if [ -z "$hooks" ]; then
             git config core.hooksPath scripts/hooks && say "set core.hooksPath to scripts/hooks" || fail "couldn't set core.hooksPath"
         elif [ "$hooks" != scripts/hooks ]; then
-            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit, checks.sh and scrub.sh there to use them"
+            swift="" && [ "$apple" = 1 ] && swift=", pre-commit-swift"
+            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit$swift, checks.sh and scrub.sh there to use them"
         fi
         list="$(git rev-parse --git-path info/scrub-words)"
         grep -q '[^[:space:]]' "$list" 2>/dev/null ||

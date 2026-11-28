@@ -45,6 +45,7 @@ The log is append-only: a changed decision gets a new row that names the row it 
 | 2026-11-28 | Guardrails | `core/github/CODEOWNERS` protects `/.swiftlint.yml` and `/.swift-format`. | Otherwise an agent could loosen a rule to get past the hook without a `Protected:` line. | maintainer |
 | 2026-11-28 | Skills | Replaces the row on Apple's Xcode plugin in its scope: `install.sh project --apple` installs it for the project at local scope (`.claude/settings.local.json`), not for the user. | Its skills' descriptions cost about 3k tokens a session, too much for every project; local scope leaves the committed, protected `.claude/settings.json` alone and offers nothing to clones without Xcode. | maintainer |
 | 2026-11-28 | Review | Every reviewer, for a spec or a branch, in every project, runs at high effort, never xhigh or max: `effort: high` in the `code-reviewer` template, and on the call where a project has none. | The reviews are the largest part of a branch's use: branch 3's branch review, on Opus 5.5 at xhigh, cost about 186k tokens, and branch 4's spec review at high about 144k. | maintainer |
+| 2026-11-28 | Review | Branch 4's commits 16 to 17b skip the mutation runs: each test is still shown failing before its code, but the spec's mutations aren't run. | Branch 4 is at light level, and each mutation reruns a whole test script, about a minute each, for little a failing-first test doesn't already show. | maintainer, on the agent's recommendation |
 
 ## Open questions
 

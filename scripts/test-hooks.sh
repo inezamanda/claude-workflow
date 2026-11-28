@@ -459,4 +459,104 @@ else
     echo "skip  swift-format.json: no swift format"
 fi
 
+# apple/hooks/pre-commit-swift, beside core's hooks as --apple installs it, with fake swift and swiftlint that log
+# each call as one line, "<tool> [arg] [arg]...", and fail on a file holding BADFORMAT or BADLINT. Homebrew's
+# folders are kept out of reach: PATH has only the fakes and the system, and SWIFT_TOOLS_PATH is an empty folder.
+swhooks="$work/swhooks" swfakes="$work/swfakes" onlyswift="$work/onlyswift"
+mkdir -p "$swhooks" "$swfakes" "$onlyswift" "$work/empty" && cp "$root"/core/hooks/* "$swhooks/" || exit 1
+cp "$root/apple/hooks/pre-commit-swift" "$swhooks/" 2>/dev/null
+cat > "$swfakes/swift" <<'FAKE'
+#!/bin/sh
+[ "$1 $2" = "format --version" ] && { [ -z "$SWIFT_BROKEN" ]; exit; }
+{ printf swift-format; printf ' [%s]' "$@"; echo; } >> "$LOG"
+for f; do [ -f "$f" ] && grep -q BADFORMAT "$f" && { echo "$f: BADFORMAT" >&2; exit 1; }; done
+exit 0
+FAKE
+cat > "$swfakes/swiftlint" <<'FAKE'
+#!/bin/sh
+[ "$1" = version ] && { echo "${SWIFTLINT_VERSION:-0.59.1}"; exit 0; }
+{ printf swiftlint; printf ' [%s]' "$@"; echo; } >> "$LOG"
+[ -n "$SWIFTLINT_ERROR" ] && { echo "Error: $SWIFTLINT_ERROR" >&2; exit 1; }
+for f; do [ -f "$f" ] && grep -q BADLINT "$f" && { echo "$f:1:1: error: BADLINT"; exit 2; }; done
+exit 0
+FAKE
+chmod +x "$swfakes/swift" "$swfakes/swiftlint" && cp "$swfakes/swift" "$onlyswift/" || exit 1
+# swift_pre <repository> [hook]: pre-commit-swift, or another hook from the same folder, with the fakes.
+swift_pre() {
+    : > "$work/swlog"
+    (cd "$1" && LOG="$work/swlog" PATH="${SWPATH:-$swfakes}:/usr/bin:/bin" SWIFT_TOOLS_PATH="$work/empty" \
+        ${SH:-sh} "$swhooks/${2:-pre-commit-swift}")
+}
+ran() { grep -qF -- "$1" "$work/swlog"; }       # ran <text>: a logged call holds it
+quiet() { swift_pre "$@" && [ ! -s "$work/swlog" ]; }  # passes, and neither tool ran
+sr="$work/sr" && fixture "$sr" && printf 'x\n' > "$sr/README.md" && printf 'rules: []\n' > "$sr/.swiftlint.yml" &&
+    printf 'let a = 1\n' > "$sr/Old.swift" && printf 'let a = 1\n' > "$sr/c1.swift" &&
+    git -C "$sr" add -A && git -C "$sr" commit -qm init --no-verify || exit 1
+swreset() { git -C "$sr" reset -q --hard && git -C "$sr" clean -qfd || exit 1; }
+stage() { mkdir -p "$sr/$(dirname "$1")" && printf '%s\n' "${2:-let a = 1}" > "$sr/$1" && git -C "$sr" add -- "$1" || exit 1; }
+
+swreset && stage a.md x
+expect pass "swift: no Swift file staged runs neither tool" quiet "$sr"
+swreset && stage Sources/A.swift
+both() { swift_pre "$sr" && ran 'swift-format [format] [lint] [--strict] [Sources/A.swift]' && ran 'swiftlint [lint]' && ran ' [Sources/A.swift]'; }
+expect pass "swift: a staged Swift file goes to both tools" both
+forced() { swift_pre "$sr" && ran 'swiftlint [lint] [--strict] [--quiet] [--force-exclude]'; }
+expect pass "swift: SwiftLint gets --force-exclude" forced
+swreset && stage Sources/A.swift BADFORMAT
+expect -m 'BADFORMAT' refuse "swift: a swift-format finding refuses" swift_pre "$sr"
+swreset && stage Sources/A.swift BADLINT
+expect -m 'BADLINT' refuse "swift: a SwiftLint finding refuses" swift_pre "$sr"
+swreset && stage Sources/A.swift && echo more >> "$sr/Sources/A.swift"
+expect -m 'Sources/A.swift' refuse "swift: a partly staged Swift file refuses, naming it" swift_pre "$sr"
+swreset && stage Sources/A.swift && echo 'rules: [x]' > "$sr/.swiftlint.yml"
+expect -m '\.swiftlint\.yml' refuse "swift: an unstaged .swiftlint.yml change refuses" swift_pre "$sr"
+swreset && stage Sources/A.swift && echo '{}' > "$sr/Sources/.swift-format"
+expect -m 'Sources/\.swift-format' refuse "swift: an untracked nested .swift-format refuses" swift_pre "$sr"
+swreset && stage a.md x && echo 'rules: [x]' > "$sr/.swiftlint.yml"
+expect pass "swift: an unstaged .swiftlint.yml change with no Swift file staged passes" swift_pre "$sr"
+swreset && stage Sources/A.swift && echo y >> "$sr/README.md"
+expect pass "swift: an unstaged change to another file passes" swift_pre "$sr"
+swreset && git -C "$sr" rm -q Old.swift
+expect pass "swift: a deleted Swift file isn't linted" quiet "$sr"
+swreset && stage 'a b.swift' && stage 'c[1].swift' && echo more >> "$sr/c1.swift"
+literal() { swift_pre "$sr" && ran 'swift-format [format] [lint] [--strict] [a b.swift] [c[1].swift]' && ran ' [a b.swift] [c[1].swift]'; }
+expect pass "swift: names with a space and a [ are one literal file each" literal
+swreset && stage Package.swift && stage Packages/X/Package.swift
+nolint() { swift_pre "$sr" && ran 'swift-format' && ! ran 'swiftlint'; }
+expect pass "swift: Package.swift at the root and in Packages/X skips SwiftLint" nolint
+swreset && stage Sources/A.swift
+export SWIFTLINT_ERROR=boom; expect -m 'boom' refuse "swift: another error with exit 1 still refuses" swift_pre "$sr"; unset SWIFTLINT_ERROR
+export SWPATH="$onlyswift"; expect -m 'brew install swiftlint' refuse "swift: no swiftlint refuses with brew install swiftlint" swift_pre "$sr"; unset SWPATH
+export SWIFT_BROKEN=1; expect -m 'Xcode' refuse "swift: a failing swift format --version refuses with the Xcode message" swift_pre "$sr"; unset SWIFT_BROKEN
+warns() { swift_pre "$sr" && ran 'swiftlint [lint]'; }
+export SWIFTLINT_VERSION=0.60.0; expect -n 'CI' pass "swift: without checks-swift.yml no version warning" swift_pre "$sr"; unset SWIFTLINT_VERSION
+mkdir -p "$sr/.github/workflows" && printf '    container: ghcr.io/realm/swiftlint:0.59.1\n' > "$sr/.github/workflows/checks-swift.yml"
+export SWIFTLINT_VERSION=0.60.0; expect -m '0\.60\.0.*0\.59\.1' pass "swift: a SwiftLint other than checks-swift.yml's warns and still lints" warns; unset SWIFTLINT_VERSION
+export SWIFTLINT_VERSION=0.59.1; expect -n '0\.59\.1' pass "swift: the same SwiftLint as checks-swift.yml's doesn't warn" swift_pre "$sr"; unset SWIFTLINT_VERSION
+fr="$work/fr" && fixture "$fr" && mkdir -p "$fr/S" && printf 'let a = 1\n' > "$fr/S/A.swift" && git -C "$fr" add S/A.swift || exit 1
+first() { swift_pre "$fr" && ran ' [S/A.swift]'; }
+expect pass "swift: the first commit is linted" first
+
+# core pre-commit with the Swift step beside it
+swreset && stage Sources/A.swift BADLINT
+expect -m 'BADLINT' refuse "pre-commit: a pre-commit-swift refusal fails it" swift_pre "$sr" pre-commit
+(cd "$sr" && git add -A && git commit -qm bad --no-verify) || exit 1
+export CHECK_COMMIT=HEAD; expect pass "pre-commit: in CI pre-commit-swift doesn't run" quiet "$sr" pre-commit; unset CHECK_COMMIT
+plain() { : > "$work/swlog"; (cd "$sr" && LOG="$work/swlog" PATH="$swfakes:/usr/bin:/bin" ${SH:-sh} "$root/core/hooks/pre-commit") && [ ! -s "$work/swlog" ]; }
+swreset && stage Sources/B.swift BADLINT
+expect pass "pre-commit: without pre-commit-swift passes as before" plain
+sm="$work/sm" && fixture "$sm" && git -C "$sm" symbolic-ref HEAD refs/heads/main && git -C "$sm" commit -qm init --no-verify &&
+    printf 'let a = 1\n' > "$sm/A.swift" && git -C "$sm" add A.swift || exit 1
+expect -m 'main' refuse "pre-commit: a core refusal with a passing Swift step still refuses" swift_pre "$sm" pre-commit
+
+# The same with the real tools: SwiftLint's "No lintable files" when the config excludes every staged file
+if PATH="$tools" command -v swiftlint >/dev/null && PATH="$tools" swift format --version >/dev/null 2>&1; then
+    gx="$work/gx" && fixture "$gx" && printf 'excluded:\n  - Gen\n' > "$gx/.swiftlint.yml" && mkdir -p "$gx/Gen" &&
+        printf 'let a = 1\n' > "$gx/Gen/A.swift" && git -C "$gx" add -A || exit 1
+    real_swift() { (cd "$gx" && PATH="$tools" ${SH:-sh} "$swhooks/pre-commit-swift"); }
+    expect pass "swift: only excluded files staged passes" real_swift
+else
+    echo "skip  swift: only excluded files staged passes: no swiftlint or swift format"
+fi
+
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
