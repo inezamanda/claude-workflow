@@ -1,4 +1,4 @@
-# claude-workflow
+# agent-workflow
 
 This is how I work with [Claude Code](https://claude.com/claude-code): the workflow I've found keeps my projects small, reviewable and safe. The agent writes the code; I decide, review every commit before it goes in, and understand each step. It's tuned for apps on Apple platforms, but most of it holds for any project.
 
@@ -27,14 +27,14 @@ Files marked as templates have `<placeholders>` and `<!-- notes -->` to fill in 
 **Once per machine**, a Mac or a Linux VM:
 
 ```sh
-git clone https://github.com/inezamanda/claude-workflow.git ~/.claude-workflow
+git clone https://github.com/inezamanda/agent-workflow.git ~/.claude-workflow
 ~/.claude-workflow/install.sh
 ```
 
 Or without cloning first, which clones to `~/.claude-workflow` for you:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/inezamanda/claude-workflow/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
 ```
 
 It links `~/.claude/CLAUDE.md` to `core/CLAUDE.md` (moving an old one to a dated backup), puts a `claude-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
