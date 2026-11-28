@@ -151,6 +151,7 @@ check "project links .claude/skills to .agents/skills" [ "$(readlink .claude/ski
 check "the .claude/skills link resolves" [ -f .claude/skills/README.md ]
 check "project's .gitattributes merges the decisions log with union" grep -qxF "docs/decisions.md merge=union" .gitattributes
 check "project adds no decisions log of its own" [ ! -e docs/decisions.md ]
+check "project with public notes leaves .gitignore alone" [ ! -e .gitignore ]
 check "project's AGENTS.md lists CONTRIBUTING.md and docs/principles.md to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\ndocs/principles.md')" ]
 check "project's AGENTS.md has no marker left" sh -c "! grep -q 'files to read' AGENTS.md"
@@ -236,6 +237,42 @@ PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "an adapted docs/CLAUDE.md is left as it was" [ "$(cat docs/CLAUDE.md)" = "# Our app: notes for AI agents" ]
 check "an adapted docs/CLAUDE.md doesn't get the principles beside it" [ ! -e docs/principles.md ]
 check "it says how to rename an adapted copy" grep -qF "git mv docs/CLAUDE.md docs/principles.md" "$work/out"
+
+# Private notes: docs/ is git-ignored, so AGENTS.md and CLAUDE.md, which name files in it, are ignored too
+mkdir -p "$work/p9" && cd "$work/p9" && git init -q && printf '/docs/' > .gitignore || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "private notes: project succeeds" [ $? -eq 0 ]
+check "private notes: AGENTS.md is git-ignored" git check-ignore -q AGENTS.md
+check "private notes: CLAUDE.md is git-ignored" git check-ignore -q CLAUDE.md
+check "private notes: the old last line of .gitignore stays whole" [ "$(head -1 .gitignore)" = /docs/ ]
+check "private notes: the union line goes in docs/, beside the log" grep -qxF "decisions.md merge=union" docs/.gitattributes
+check "private notes: no .gitattributes at the root" [ ! -e .gitattributes ]
+lines="$(wc -l < .gitignore)"
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "private notes: a second run adds nothing to .gitignore" [ "$(wc -l < .gitignore)" -eq "$lines" ]
+# Private notes found by docs/ being a repository of its own, before it's ignored
+mkdir -p "$work/p10/docs" && cd "$work/p10" && git init -q && git -C docs init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "notes in a repository of their own: AGENTS.md is git-ignored" git check-ignore -q AGENTS.md
+check "notes in a repository of their own: it says to ignore docs/" grep -qF "add /docs/ to .gitignore" "$work/out"
+# The same before git init: a second run still adds nothing to .gitignore
+mkdir -p "$work/p12/docs" && cd "$work/p12" && git -C docs init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+lines="$(wc -l < .gitignore)"
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "notes in a repository of their own, no git yet: a second run adds nothing to .gitignore" [ "$(wc -l < .gitignore)" -eq "$lines" ]
+# Private notes with a tracked AGENTS.md, and a root .gitattributes from when they were public: it says to
+# untrack AGENTS.md before it lists what to add, and to remove the old union line
+mkdir -p "$work/p11" && cd "$work/p11" && git init -q && printf '/docs/\n' > .gitignore && echo "# ours" > AGENTS.md && git add AGENTS.md || exit 1
+echo "docs/decisions.md merge=union" > .gitattributes
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "a tracked AGENTS.md with private notes is left as it was" [ "$(cat AGENTS.md)" = "# ours" ]
+check "it says to untrack AGENTS.md" grep -qF "git rm --cached AGENTS.md" "$work/out"
+check "it says to untrack AGENTS.md before it lists what to add" sh -c "u=\$(grep -n 'git rm --cached AGENTS.md' '$work/out' | cut -d: -f1); a=\$(grep -n 'add these to the files' '$work/out' | cut -d: -f1); [ -n \"\$u\" ] && [ -n \"\$a\" ] && [ \"\$u\" -lt \"\$a\" ]"
+check "it says to remove the old union line from the root .gitattributes" grep -qF "remove its line docs/decisions.md merge=union" "$work/out"
+lines="$(wc -l < .gitignore)"
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "with AGENTS.md still tracked, a second run adds nothing to .gitignore" [ "$(wc -l < .gitignore)" -eq "$lines" ]
 
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1

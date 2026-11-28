@@ -10,6 +10,6 @@ Read these before working here:
 
 ## Notes
 
-<!-- Public notes live in docs/. Private notes live in a repository of their own, and public files never name it or link to it: then say only that the notes are kept outside this repository. -->
+<!-- The notes live in docs/. Where they're private, docs/ is a git-ignored repository of their own, and agent-workflow keeps this file and CLAUDE.md git-ignored too, so both may name what's in docs/. -->
 
-The plans, decisions and reviews are in <docs/, or: outside this repository>. The current plan names the next step, so start there when you resume. Templates for a branch's spec, the decisions log and an edge list are in `docs/templates/`.
+The plans, decisions and reviews are in `docs/`. The current plan names the next step, so start there when you resume. Templates for a branch's spec, the decisions log and an edge list are in `docs/templates/`.

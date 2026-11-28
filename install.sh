@@ -166,6 +166,11 @@ project() {
         fail "the templates go at the repository's root; run agent-workflow project in $top"
         return
     fi
+    # The notes are private when docs/ is a repository of its own or git-ignored. Then AGENTS.md and CLAUDE.md, which
+    # name files in docs/, stay out of the public repository too, and the union line goes in docs/ beside the log.
+    private=0
+    { [ -e docs/.git ] || git check-ignore -q docs/ 2>/dev/null; } && private=1
+
     # Before the rename the principles were copied as docs/CLAUDE.md, often adapted past recognition, so any
     # docs/CLAUDE.md is taken for them: renamed by hand, never loaded twice.
     old_principles=0
@@ -196,11 +201,12 @@ project() {
     fi
 
     # Two branches that each add rows to the append-only decisions log then merge without a conflict.
-    union="docs/decisions.md merge=union"
-    if [ ! -e .gitattributes ]; then
-        printf '%s\n' "$union" > .gitattributes && say "added .gitattributes" || fail "couldn't add .gitattributes"
-    elif ! grep -qxF "$union" .gitattributes; then
-        skip ".gitattributes is already there; add this line to it to merge the decisions log:"
+    attributes=.gitattributes union="docs/decisions.md merge=union"
+    [ "$private" = 1 ] && attributes=docs/.gitattributes union="decisions.md merge=union"
+    if [ ! -e "$attributes" ]; then
+        printf '%s\n' "$union" > "$attributes" && say "added $attributes" || fail "couldn't add $attributes"
+    elif ! grep -qxF "$union" "$attributes"; then
+        skip "$attributes is already there; add this line to it to merge the decisions log:"
         printf '  %s\n' "$union" >&2
     fi
 
@@ -214,6 +220,26 @@ project() {
             copy apple/CLAUDE.md docs/code-smells.md
             reads="$reads docs/code-smells.md"
         fi
+    fi
+
+    # Before AGENTS.md and CLAUDE.md are written or checked, so an untrack message comes before any list of
+    # private files to add to them.
+    if [ "$private" = 1 ]; then
+        for f in AGENTS.md CLAUDE.md; do
+            # check-ignore fails outside a repository, so the line itself is looked for too.
+            if ! grep -qxF "/$f" .gitignore 2>/dev/null && ! git check-ignore -q --no-index "$f" 2>/dev/null; then
+                # A last line without a newline would run into the new one.
+                [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
+                printf '/%s\n' "$f" >> .gitignore && say "added /$f to .gitignore, since it names the private notes" ||
+                    fail "couldn't add /$f to .gitignore"
+            fi
+            git ls-files --error-unmatch "$f" >/dev/null 2>&1 &&
+                skip "$f is tracked, but where the notes are private it mustn't be; untrack it first with: git rm --cached $f"
+        done
+        [ -e docs/.git ] && ! git check-ignore -q docs/ 2>/dev/null &&
+            skip "docs/ is a repository of its own; add /docs/ to .gitignore, or git records it here as an embedded repository"
+        grep -qxF "docs/decisions.md merge=union" .gitattributes 2>/dev/null &&
+            skip "the root .gitattributes still merges the decisions log, which is in the private notes now; remove its line docs/decisions.md merge=union"
     fi
 
     # An AGENTS.md or CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.
