@@ -215,11 +215,14 @@ ignore() {
 }
 
 # above <file in the clone>: prints the first CLAUDE.md in a folder above this one with the same text, if any.
-# Claude Code loads those too, so a copy here would load the same rules twice.
+# Claude Code loads those too, so a copy here would load the same rules twice. Exits 2, printing it, when that
+# CLAUDE.md is a broken link to a clone's <file>: a rename broke one once, and nothing said so.
 above() {
     dir="$(dirname "$(pwd -P)")"
     while :; do
         [ -f "$dir/CLAUDE.md" ] && cmp -s "$dir/CLAUDE.md" "$repo/$1" && { say "$dir/CLAUDE.md"; return 0; }
+        [ -L "$dir/CLAUDE.md" ] && [ ! -e "$dir/CLAUDE.md" ] &&
+            case "$(readlink "$dir/CLAUDE.md")" in */"$1") say "$dir/CLAUDE.md"; return 2 ;; esac
         [ "$dir" = / ] && return 1
         dir="$(dirname "$dir")"
     done
@@ -342,12 +345,16 @@ project() {
         grep -q pre-commit-swift scripts/hooks/pre-commit 2>/dev/null ||
             skip "the kept scripts/hooks/pre-commit doesn't run scripts/hooks/pre-commit-swift, so the Swift step won't run; replace it with $repo/core/hooks/pre-commit"
         reads="CONTRIBUTING.md CODING.md docs/principles.md"
-        if smells="$(above apple/CLAUDE.md)"; then
-            skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
-        else
-            copy apple/CLAUDE.md docs/code-smells.md
-            reads="$reads docs/code-smells.md"
-        fi
+        smells="$(above apple/CLAUDE.md)"
+        case $? in
+            0) skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added" ;;
+            # Not copied: once relinked, a copy would load them twice.
+            2) skip "$smells is a broken link to the code smells, so they aren't loaded here; relink it with: ln -sf $repo/apple/CLAUDE.md $smells" ;;
+            *)
+                copy apple/CLAUDE.md docs/code-smells.md
+                reads="$reads docs/code-smells.md"
+                ;;
+        esac
     fi
 
     # Before AGENTS.md and CLAUDE.md are written or checked, so an untrack message comes before any list of

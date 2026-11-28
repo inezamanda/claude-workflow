@@ -265,6 +265,15 @@ check "project --apple under the code smells lists three to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md')" ]
 check "project --apple installs xcode when only another project has it locally" [ "$(count "$xc")" -eq 2 ]
 
+# project --apple under a CLAUDE.md link to a clone's code smells that a rename broke, and under an unrelated one
+mkdir -p "$work/gone/p" && ln -s "$work/old-clone/apple/CLAUDE.md" "$work/gone/CLAUDE.md" && cd "$work/gone/p" && git init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple under a broken code smells link says how to relink it" grep -qF "ln -sf $src/apple/CLAUDE.md $work/gone/CLAUDE.md" "$work/out"
+check "project --apple under a broken code smells link doesn't copy them" [ ! -e docs/code-smells.md ]
+mkdir -p "$work/other/p" && ln -s "$work/nowhere/CLAUDE.md" "$work/other/CLAUDE.md" && cd "$work/other/p" && git init -q || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple under an unrelated broken CLAUDE.md link copies the smells" [ -f docs/code-smells.md ]
+
 # The Xcode plugin when something's off: each skips it and the setup still succeeds.
 xcode_case() { # xcode_case <state file> [its content]
     mkdir -p "$work/x-$1" && cd "$work/x-$1" && git init -q || exit 1
