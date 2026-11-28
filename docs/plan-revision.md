@@ -136,7 +136,7 @@ Sizes count non-test lines added and removed. Five branches, each a pull request
 
 18. `feat: add the test-writer and test-runner agents`. ~100, M.
 19. `docs: describe the experiment and its results table`. ~80, S.
-20. `docs: describe the layout, the tools and the guardrails in the readme`. ~80, S.
+20. `docs: describe the layout, the tools and the guardrails in the readme`: the file tree also lists `docs/` as this repository's own plan and decisions, not copied into projects. ~80, S.
 
 Also open: whether this repository gets its own root `AGENTS.md` and `CLAUDE.md`, and whether graphify's `post-commit` refresh joins `core/`.
 
@@ -159,5 +159,6 @@ The question: does a test writer that works from the spec, before the code exist
 | 4 | `docs: add templates for a spec, a decisions log and an edge list` | 9511f6d | OK as proposed; templates go to `docs/templates/` on the agent's recommendation |
 | 5 | `refactor: split the global instructions into AGENTS.md and a Claude adapter` | c40c180 | OK as proposed; `install.sh` run after it to relink `~/.claude` |
 | 6 | `feat: give projects an AGENTS.md that CLAUDE.md imports` | e2ad482 | OK as proposed |
+| 7 | `feat: put the skills in .agents/skills with a .claude/skills link` | 631b11c | OK as proposed; Claude Code's discovery through the link checked with `claude -p` |
 
-Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 7, which also commits the notes changed since commit 6. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).
+Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 8, which also commits the notes changed since commit 7. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).
