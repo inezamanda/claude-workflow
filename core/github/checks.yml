@@ -1,0 +1,31 @@
+# Runs the hooks again on every commit of each pull request, with the base's hooks and CODEOWNERS, so a commit
+# made with --no-verify, or in a clone without the hooks, is still checked. Copy to .github/workflows/checks.yml.
+# Its job, checks, is the status check that the ruleset on main requires (see CONTRIBUTING.md).
+# Never switch this to pull_request_target: it runs pull requests from forks with the repository's secrets.
+name: Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The base's ci-checks.sh, like its hooks, so the pull request can't change how it's checked; the head's only
+      # when the base has none yet.
+      - run: |
+          git cat-file blob "$BASE:scripts/ci-checks.sh" > "$RUNNER_TEMP/ci-checks.sh" 2>/dev/null ||
+              cp scripts/ci-checks.sh "$RUNNER_TEMP/ci-checks.sh"
+          sh "$RUNNER_TEMP/ci-checks.sh" "$BASE" "$HEAD"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}

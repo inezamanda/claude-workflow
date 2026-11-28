@@ -6,6 +6,7 @@
 # The types and scopes are the names in backticks on the "- **Types:**" and "- **Scopes:**" lines of the root
 # CONTRIBUTING.md, as it is staged, so a commit can add a scope and use it. With no scopes listed, any passes.
 # Copy it, checks.sh and scrub.sh into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
+# In CI, scripts/ci-checks.sh runs it on each commit's stored message with CHECK_COMMIT set (see checks.sh).
 
 # 0 refuses a message that credits an AI (a Co-Authored-By trailer or a "Generated with" line). Match CONTRIBUTING.md.
 ALLOW_AI_CREDIT=1
@@ -28,7 +29,8 @@ names() {
     }' | grep -o '`[a-z0-9-]*`' | tr -d '`' | tr '\n' ' ' | sed 's/ $//'
 }
 staged=0 types="" scopes=""
-if contributing="$(git cat-file blob :CONTRIBUTING.md 2>/dev/null)"; then
+# ":CONTRIBUTING.md" is the staged copy; in CI, "<commit>:CONTRIBUTING.md" the commit's.
+if contributing="$(git cat-file blob "$CHECK_COMMIT:CONTRIBUTING.md" 2>/dev/null)"; then
     staged=1 types="$(names Types)" scopes="$(names Scopes)"
 fi
 
@@ -73,9 +75,11 @@ if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
         refuse "CODEOWNERS protects $protected; say why in a line \"Protected: <why>\""
 fi
 
-# Without comments here: the editor's status lines name the files, deleted ones included.
+# Locally without comments: the editor's status lines name the files, deleted ones included. In CI the stored
+# message is read in full, since all of it is public: with -m, git keeps lines that start with #.
 if notes_private; then
-    links="$(printf '%s\n' "$msg" | git stripspace --strip-comments | notes_links)"
+    if [ -n "$CHECK_COMMIT" ]; then public="$(cat "$1")"; else public="$(printf '%s\n' "$msg" | git stripspace --strip-comments)"; fi
+    links="$(printf '%s\n' "$public" | notes_links)"
     [ -n "$links" ] && refuse "the notes are private here, so the message may not point into docs/:
 $links"
 fi

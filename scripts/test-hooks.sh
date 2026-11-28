@@ -279,6 +279,79 @@ export JQ=/nonexistent/jq && expect pass "claude: no jq asks" asks "$(edit "$cl/
 mkdir -p "$work/nochecks" || exit 1
 expect pass "claude: no checks.sh asks" asks "$(edit "$cl/b.txt")" "$work/nochecks"
 
+# core/checks/ci-checks.sh, which runs the hooks on each commit of a pull request, with the base's hooks and CODEOWNERS.
+# Commits are made without hooks, as a push with --no-verify would bring them.
+ci="$root/core/checks/ci-checks.sh"
+# ci_repo <name> [owners]: a repository whose first commit, the base, has the core hooks in scripts/hooks, a.txt,
+# a .gitignore that makes the notes private and, unless owners is "none", a CODEOWNERS that lists /a.txt.
+ci_repo() {
+    r="$work/$1" && fixture "$r" && mkdir -p "$r/scripts/hooks" && echo a > "$r/a.txt" && printf '/docs/\n' > "$r/.gitignore" &&
+        cp "$root/core/hooks/commit-msg" "$root/core/hooks/pre-commit" "$root/core/hooks/checks.sh" "$root/core/hooks/scrub.sh" \
+            "$r/scripts/hooks/" || exit 1
+    [ "${2:-}" = none ] || printf '/a.txt @OWNER\n' > "$r/CODEOWNERS" || exit 1
+    git -C "$r" add -A && git -C "$r" commit -qm 'chore: base' && cibase="$(git -C "$r" rev-parse HEAD)" || exit 1
+}
+# put <file> <text>: the file written with that text and staged, in $r. cmt <message...>: a commit of what's staged.
+put() { mkdir -p "$r/$(dirname "$1")" && printf '%s\n' "$2" > "$r/$1" && git -C "$r" add -f "$1" || exit 1; }
+cmt() { git -C "$r" commit -q --allow-empty "$@" && short="$(git -C "$r" rev-parse --short HEAD)" || exit 1; }
+# ci_run [repository]: ci-checks.sh over the base to HEAD, from the repository's root, as CI runs it.
+ci_run() { (cd "${1:-$r}" && ${SH:-sh} "$ci" "$cibase" "$(git rev-parse HEAD)"); }
+
+ci_repo ci-cg && put b.txt b && cmt -m 'feat: one' && put c.txt c && cmt -m 'fix: two'
+expect pass "ci: good range" ci_run
+# A type the first commit adds and uses, and the second drops: each commit is checked with its own CONTRIBUTING.md.
+ci_repo ci-ct && sed 's/`perf`, /`perf`, `wip`, /' "$root/core/CONTRIBUTING.md" > "$r/CONTRIBUTING.md" && git -C "$r" add CONTRIBUTING.md &&
+    cmt -m 'wip: add wip' && cp "$root/core/CONTRIBUTING.md" "$r/" && git -C "$r" add CONTRIBUTING.md && cmt -m 'chore: drop wip'
+expect pass "ci: each commit's own CONTRIBUTING.md" ci_run
+# Each bad commit below is undone by a later one, so reading the index or only the head misses it.
+ci_repo ci-cm && put b.txt b && cmt -m 'feat: one' && put c.txt c && cmt -m 'bad message' && bad="$short" && put d.txt d && cmt -m 'fix: three'
+expect -m "^$bad commit-msg: the subject" refuse "ci: bad middle message" ci_run
+ci_repo ci-cp && put a.txt b && cmt -m 'fix: change a' && bad="$short" && put a.txt a && cmt -m 'fix: undo' -m 'Protected: undo'
+expect -m "^$bad commit-msg: CODEOWNERS protects a.txt" refuse "ci: protected middle commit" ci_run
+ci_repo ci-cv && put docs/x.md x && cmt -m 'docs: notes' && bad="$short" && git -C "$r" rm -q --cached docs/x.md && cmt -m 'chore: untrack'
+expect -m "^$bad pre-commit: .*docs/x.md" refuse "ci: private path in a middle commit" ci_run
+ci_repo ci-cl && put b.md 'see docs/plan.md' && cmt -m 'docs: link' && bad="$short" && git -C "$r" rm -q b.md && cmt -m 'chore: drop'
+expect -m "^$bad see docs/plan.md" refuse "ci: docs/ link in a middle commit" ci_run
+# An orphan branch: its root commit has no parent, so it's compared with the empty tree.
+ci_repo ci-cr && git -C "$r" checkout -q --orphan other && put docs/x.md x && cmt -m 'chore: root'
+expect -m "^$short pre-commit: .*docs/x.md" refuse "ci: root commit" ci_run
+ci_repo ci-ci && put .gitignore '' && cmt -m 'chore: unignore' && put docs/x.md x && cmt -m 'docs: notes'
+expect -m "^$short pre-commit: .*docs/x.md" refuse "ci: the base's .gitignore counts" ci_run
+# The head's commit-msg passes everything and its checks.sh protects nothing; the base's are used.
+ci_repo ci-cs && put scripts/hooks/commit-msg "$(printf '#!/bin/sh\n# CHECK_COMMIT\nexit 0')" && cmt -m 'chore: no check' &&
+    printf 'protected_paths() { :; }\n' >> "$r/scripts/hooks/checks.sh" && git -C "$r" add scripts/hooks && cmt -m 'chore: none' &&
+    put a.txt b && cmt -m 'fix: change a'
+expect -m "^$short commit-msg: CODEOWNERS protects a.txt" refuse "ci: a commit can't switch off its check" ci_run
+ci_repo ci-cu && put CODEOWNERS '' && cmt -m 'chore: unprotect a.txt' -m 'Protected: a.txt needs no owner' && put a.txt b && cmt -m 'fix: change a'
+expect -m "^$short commit-msg: CODEOWNERS protects a.txt" refuse "ci: unprotected in the same pull request" ci_run
+ci_repo ci-cn none && put CODEOWNERS '/a.txt @OWNER' && cmt -m 'chore: protect a.txt' && put a.txt b && cmt -m 'fix: change a'
+expect pass "ci: base without CODEOWNERS" ci_run
+# old_hooks: hooks from before CI, which don't know CHECK_COMMIT, put in $r's scripts/hooks and committed.
+old_hooks() {
+    for f in commit-msg pre-commit; do printf '#!/bin/sh\n. "$(dirname "$0")/checks.sh"\n' > "$r/scripts/hooks/$f" || exit 1; done
+    printf 'refuse() { :; }\n' > "$r/scripts/hooks/checks.sh" && git -C "$r" add scripts/hooks && cmt -m 'chore: old hooks'
+}
+ci_repo ci-co && old_hooks && cibase="$(git -C "$r" rev-parse HEAD)" &&
+    cp "$root/core/hooks/commit-msg" "$root/core/hooks/pre-commit" "$root/core/hooks/checks.sh" "$r/scripts/hooks/" &&
+    git -C "$r" add scripts/hooks && cmt -m 'chore: new hooks' && put b.txt b && cmt -m 'feat: one'
+expect -m "the head's" pass "ci: an older base hook" ci_run
+put c.txt c && cmt -m 'bad message'
+expect -m "^$short commit-msg: the subject" refuse "ci: an older base hook checks with the head's" ci_run
+ci_repo ci-cq && old_hooks && cibase="$(git -C "$r" rev-parse HEAD)" && put b.txt b && cmt -m 'feat: one'
+expect -m 'CHECK_COMMIT' refuse "ci: an old hook fails" ci_run
+ci_repo ci-ch && git -C "$r" rm -rq scripts && cmt -m 'chore: no hooks' && cibase="$(git -C "$r" rev-parse HEAD)" && put b.txt b && cmt -m 'feat: one'
+expect -m 'scripts/hooks' refuse "ci: no hooks fails" ci_run
+ci_repo ci-cg2 && git -C "$r" checkout -q -b x && put b.txt b && cmt -m 'feat: one' && git -C "$r" checkout -q feat &&
+    put c.txt c && cmt -m 'feat: two' && git -C "$r" merge -q --no-ff -m 'bad merge' x || exit 1
+expect pass "ci: merges skipped" ci_run
+ci_repo ci-cz && rm "$r/.git/info/scrub-words" && put b.txt 'for Secretname' && cmt -m 'feat: one'
+expect pass "ci: no scrub in CI" ci_run
+ci_repo ci-cmn && git -C "$r" checkout -q -b main && put b.txt b && cmt -m 'feat: one'
+expect pass "ci: no main check in CI" ci_run
+# With -m, git keeps lines that start with #, so the stored message has one.
+ci_repo ci-cc && cmt -m 'fix: x' -m '# see docs/plan.md'
+expect -m "^$short # see docs/plan.md" refuse "ci: a # line naming docs/ in a stored message fails" ci_run
+
 # scripts/hooks (the scrub check), in a throwaway repository with its own word list.
 # The refusals must be scrub.sh's own, so a hook that can't find it fails them.
 repo="$work/repo"

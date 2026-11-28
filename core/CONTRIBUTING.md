@@ -12,8 +12,14 @@ git config core.hooksPath scripts/hooks
 
 Before every commit, the hooks refuse:
 
-- a message that isn't `type(scope): subject`, runs past 100 characters, or credits an AI where the project doesn't allow it;
+- a message that isn't `type(scope): subject` with a type and scope listed under Commits, runs past 100 characters, or credits an AI where the project doesn't allow it;
+- a commit on `main`;
+- a word from the scrub list in the message or the staged changes. The list is `.git/info/scrub-words`, one word or phrase per line, such as real names; it stays in `.git`, so it's never committed, and the hooks refuse every commit until it exists;
+- where the notes are private, a commit that adds the notes, or a line or message that points into them;
+- a change to a path `CODEOWNERS` lists, unless the message has a line `Protected: <why>`;
 - <!-- each check the project's hooks add, one line each -->
+
+They warn when a commit changes more than 200 lines outside tests. To fix up a protected change, use `git commit --fixup=amend:<commit>` or `--squash=<commit>` and keep the `Protected:` line: an autosquash drops a plain fixup's message, line included, and CI then fails.
 
 Never skip them with `--no-verify`; if one is wrong, fix the check.
 
@@ -44,6 +50,17 @@ Keep moves and reformatting in their own commits, separate from changes in behav
 
 Don't commit to `main`. Each piece of work gets its own branch, named `type/scope-topic` with the same types and scopes as commits, like `feat/sync-retry` or `fix/editor-draft`. Keep the small commits on that branch, then open a pull request into `main` that says what changed and which tests you ran; GitHub fills its description from `.github/pull_request_template.md`.
 
-<!-- What runs on each pull request: the checks, the tests, the review. -->
+`.github/workflows/checks.yml` runs the hooks again on every commit of each pull request, merges aside, with the base's copies of the hooks and of `CODEOWNERS`, so no commit can switch off its own check. A commit that drops a path from `CODEOWNERS` and a later one in the same pull request that changes it without a `Protected:` line pass locally, but fail there. Protect `main` with a ruleset (Settings, Rules, Rulesets): require a pull request, block force pushes, and require the status check `checks`, so a red run blocks the merge.
+
+What the checks can't catch:
+
+- `--no-verify`, or a commit from a clone without the hooks: only CI catches it;
+- a pull request that changes `checks.yml` itself, which runs as the pull request has it;
+- a protected change made while resolving a merge conflict;
+- an edit made from the shell rather than Claude's Edit tool: nothing asks first, though the commit still needs its `Protected:` line;
+- a pull request whose base has no hooks, or older ones, is checked with its own, and one whose base has no `CODEOWNERS` protects nothing;
+- git matches `CODEOWNERS` patterns more widely than GitHub: `a/*` also covers `a/b/c`, and a line without an owner still protects its paths.
+
+<!-- What else runs on each pull request: the tests, the review. -->
 
 Merge with **Create a merge commit**. Don't squash or rebase: notes and reviews refer to commits by their hash, and both of those create new hashes.

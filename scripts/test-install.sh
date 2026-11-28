@@ -165,6 +165,7 @@ check "project: adds the hooks" sh -c "[ -x scripts/hooks/commit-msg ] && [ -x s
 check "project: adds CODEOWNERS" cmp -s .github/CODEOWNERS "$src/core/github/CODEOWNERS"
 check "project: adds settings.json with the hook" sh -c "cmp -s .claude/settings.json '$src/core/claude/settings.json' && [ -x .claude/hooks/protected-edit.sh ]"
 check "project: says how to make the scrub list" grep -qF ".git/info/scrub-words" "$work/out"
+check "project: adds the CI checks" sh -c "[ -x scripts/ci-checks.sh ] && cmp -s .github/workflows/checks.yml '$src/core/github/checks.yml'"
 check "a new project's hooks get no warning that they differ" sh -c "! grep -q 'differs' '$work/out'"
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
@@ -314,6 +315,17 @@ check "project: keeps settings.json" sh -c "[ \"\$(cat .claude/settings.json)\" 
 mkdir -p "$work/p20/.claude" && cd "$work/p20" && git init -q && cp "$src/core/claude/settings.json" .claude/ || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: no block when the hook is named" sh -c "! grep -q 'settings.json is already there' '$work/out'"
+
+mkdir -p "$work/p21/.github/workflows" && cd "$work/p21" && git init -q && echo 'name: ours' > .github/workflows/checks.yml || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: warns about an older checks.yml" grep -q '.github/workflows/checks.yml differs' "$work/out"
+
+# A private-notes project's whole install output goes through its own hooks: no installed text points into the notes
+mkdir -p "$work/p22" && cd "$work/p22" && git init -q && git symbolic-ref HEAD refs/heads/feat && printf '/docs/\n' > .gitignore &&
+    echo Secretname > .git/info/scrub-words || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+git add -A && git -c user.name=t -c user.email=t@t commit -qm 'chore: set up agent-workflow' > "$work/out" 2>&1
+check "project: a private-notes project commits its install output" [ $? -eq 0 ]
 
 # Hooks kept from an older setup: a warning when one differs, except in commit-msg's ALLOW_AI_CREDIT line
 mkdir -p "$work/p15/scripts/hooks" && cd "$work/p15" && git init -q && printf '#!/bin/sh\nexit 0\n' > scripts/hooks/commit-msg || exit 1

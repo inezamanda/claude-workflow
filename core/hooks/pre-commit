@@ -3,10 +3,11 @@
 # its own), no notes files and no added line that names a path into them; no word from the scrub list; and a
 # warning when the commit changes more than 200 lines outside tests.
 # Copy it, checks.sh and scrub.sh into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
+# In CI, scripts/ci-checks.sh runs it on each commit with CHECK_COMMIT set (see checks.sh); main isn't checked there.
 . "$(dirname "$0")/checks.sh"
 
 # A detached HEAD (a rebase) and an unborn main (the first commit) pass.
-if [ "$(git symbolic-ref -q --short HEAD)" = main ] && git rev-parse -q --verify HEAD >/dev/null; then
+if [ -z "$CHECK_COMMIT" ] && [ "$(git symbolic-ref -q --short HEAD)" = main ] && git rev-parse -q --verify HEAD >/dev/null; then
     refuse "this is main; commit on a branch and open a pull request"
 fi
 
@@ -24,7 +25,7 @@ fi
 # The lines added and removed outside tests. Renames are followed, so a move counts only what it changes;
 # binary files show "-" and count nothing. With -z, a rename's two paths follow on lines of their own.
 if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
-    size="$(git diff-index --cached -M --numstat -z "$base" | tr '\0' '\n' | awk -F '\t' '
+    size="$(changes -M --numstat -z | tr '\0' '\n' | awk -F '\t' '
         function count(path,   n, i, part) {
             n = split(path, part, "/")
             for (i = 1; i < n; i++) if (part[i] ~ /^(test|tests|Tests|__tests__)$/) return

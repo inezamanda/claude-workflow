@@ -205,6 +205,9 @@ project() {
     for f in commit-msg pre-commit checks.sh scrub.sh; do
         guard "core/hooks/$f" "scripts/hooks/$f"
     done
+    # CI runs the hooks again on every commit of a pull request.
+    guard core/checks/ci-checks.sh scripts/ci-checks.sh
+    guard core/github/checks.yml .github/workflows/checks.yml
     # The hooks protect the paths CODEOWNERS lists, read from the first place GitHub looks. Beside a project's own
     # file a new one would win over it, so the template's missing lines are printed instead.
     owners=""
