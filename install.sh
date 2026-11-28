@@ -205,6 +205,24 @@ project() {
     for f in commit-msg pre-commit checks.sh scrub.sh; do
         guard "core/hooks/$f" "scripts/hooks/$f"
     done
+    # The hooks protect the paths CODEOWNERS lists, read from the first place GitHub looks. Beside a project's own
+    # file a new one would win over it, so the template's missing lines are printed instead.
+    owners=""
+    for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+        [ "$f" = docs/CODEOWNERS ] && [ "$private" = 1 ] && continue
+        [ -e "$f" ] && owners="$f" && break
+    done
+    if [ -z "$owners" ]; then
+        copy core/github/CODEOWNERS .github/CODEOWNERS
+    else
+        lines="$(awk 'NR == FNR { have[$1]; next } NF && $1 !~ /^#/ && !($1 in have)' "$owners" "$repo/core/github/CODEOWNERS")"
+        if [ -n "$lines" ]; then
+            skip "$owners is already there; add these lines to it, so the hooks protect the guards:"
+            printf '%s\n' "$lines" | sed 's/^/  /' >&2
+        fi
+        awk '$1 == "*" { found = 1 } END { exit !found }' "$owners" &&
+            skip "$owners has a catch-all * line, so the hooks ask every commit for a \"Protected: <why>\" line"
+    fi
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml
     copy core/github/pull_request_template.md .github/pull_request_template.md

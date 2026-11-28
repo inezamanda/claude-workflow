@@ -25,14 +25,14 @@ added_lines() {
 # scrub <what>: the text on stdin against the word list in .git/info/scrub-words.
 scrub() { ${SH:-sh} "$hooks_dir/scrub.sh" "$1"; }
 
-# ignored_by <path>: whether the ignore rules on stdin match the path, and no others: they're matched in an
-# empty throwaway repository, without the user's global excludes and with case counting. Its git runs with
-# the hook's variables unset, or it would act on the project (GIT_DIR is set in a linked worktree).
-ignored_by() (
+# matching <rules>: the NUL-separated paths on stdin that git's ignore rules in <rules> match, and no other rules:
+# they're matched in an empty throwaway repository, without the user's global excludes and with case counting.
+# Its git runs with the hook's variables unset, or it would act on the project (GIT_DIR is set in a linked worktree).
+matching() (
     unset $(git rev-parse --local-env-vars)
     tmp="$(mktemp -d)" || exit 2
-    git init -q "$tmp" && cat > "$tmp/.git/info/exclude" &&
-        git -C "$tmp" -c core.excludesFile=/dev/null -c core.ignorecase=false check-ignore -q --no-index "$1"
+    git init -q "$tmp" && printf '%s\n' "$1" > "$tmp/.git/info/exclude" &&
+        git -C "$tmp" -c core.excludesFile=/dev/null -c core.ignorecase=false check-ignore --no-index --stdin -z
     status=$?
     rm -rf "$tmp"
     exit $status
@@ -44,7 +44,26 @@ ignored_by() (
 notes_private() {
     [ -e docs/.git ] && return 0
     git check-ignore -q --no-index docs/ 2>/dev/null && return 0
-    gitignore="$(git cat-file blob HEAD:.gitignore 2>/dev/null)" && printf '%s\n' "$gitignore" | ignored_by docs/
+    gitignore="$(git cat-file blob HEAD:.gitignore 2>/dev/null)" && printf 'docs/\0' | matching "$gitignore" >/dev/null
+}
+
+# codeowners: HEAD's CODEOWNERS, the first of the places GitHub looks; the notes' copy is skipped where they're
+# private. HEAD's, so a commit can't drop a path from the list and change it at once.
+codeowners() {
+    for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+        [ "$f" = docs/CODEOWNERS ] && notes_private && continue
+        git cat-file blob "HEAD:$f" 2>/dev/null && return
+    done
+}
+
+# protected_paths: the paths the commit adds, changes or deletes that CODEOWNERS lists, one per line. Without
+# renames, so a file moved out of a protected folder counts. The patterns are each line's first field; ! lines
+# are dropped, since GitHub rejects them and git would un-protect. git's matching is wider than GitHub's (a/*
+# also matches a/b/c, and a line without an owner still counts), so it errs toward protecting.
+protected_paths() {
+    patterns="$(codeowners | awk '$1 !~ /^[#!]/ && NF { print $1 }')"
+    [ -n "$patterns" ] || return 0
+    git diff-index --cached --no-renames --name-only -z "$base" | matching "$patterns" | tr '\0' '\n'
 }
 
 # private_paths: the paths on stdin that are private notes: docs in any mode (folder, gitlink, link), anything

@@ -162,6 +162,7 @@ check "project's AGENTS.md has no marker left" sh -c "! grep -q 'files to read' 
 check "project's CLAUDE.md imports AGENTS.md, then CONTRIBUTING.md and docs/principles.md" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@docs/principles.md')" ]
 check "project: adds the hooks" sh -c "[ -x scripts/hooks/commit-msg ] && [ -x scripts/hooks/pre-commit ] && [ -x scripts/hooks/scrub.sh ] && cmp -s scripts/hooks/checks.sh '$src/core/hooks/checks.sh'"
+check "project: adds CODEOWNERS" cmp -s .github/CODEOWNERS "$src/core/github/CODEOWNERS"
 check "project: says how to make the scrub list" grep -qF ".git/info/scrub-words" "$work/out"
 check "a new project's hooks get no warning that they differ" sh -c "! grep -q 'differs' '$work/out'"
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
@@ -292,6 +293,17 @@ mkdir -p "$work/p14/docs" && cd "$work/p14" && git init -q && printf '/docs/\n' 
     git add -f docs/x.md || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: private notes with a docs/ file tracked" grep -qxF /AGENTS.md .gitignore
+
+# A CODEOWNERS of the project's own is kept, and the template's lines printed: a second one would win over it
+mkdir -p "$work/p17" && cd "$work/p17" && git init -q && printf '/src/ @us\n/.gitignore @us\n' > CODEOWNERS || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: keeps a root CODEOWNERS" sh -c "[ ! -e .github/CODEOWNERS ] && [ \"\$(cat CODEOWNERS)\" = \"\$(printf '/src/ @us\n/.gitignore @us')\" ]"
+check "project: prints the template's lines to add" grep -qx '  /scripts/hooks/ @OWNER' "$work/out"
+check "project: doesn't print a line the file has" sh -c "! grep -qx '  /.gitignore @OWNER' '$work/out'"
+check "project: no warning without a catch-all line" sh -c "! grep -q 'catch-all' '$work/out'"
+mkdir -p "$work/p18" && cd "$work/p18" && git init -q && printf '* @us\n' > CODEOWNERS || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "project: warns about a catch-all line" grep -q 'catch-all' "$work/out"
 
 # Hooks kept from an older setup: a warning when one differs, except in commit-msg's ALLOW_AI_CREDIT line
 mkdir -p "$work/p15/scripts/hooks" && cd "$work/p15" && git init -q && printf '#!/bin/sh\nexit 0\n' > scripts/hooks/commit-msg || exit 1

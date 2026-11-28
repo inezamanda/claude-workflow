@@ -190,6 +190,61 @@ expect -m '^scrub: ' refuse "scrub: core pre-commit reads the staged lines" pre_
 git -C "$sc" rm -q --cached b.txt && echo x > "$sc/Secretname.txt" && git -C "$sc" add Secretname.txt || exit 1
 expect -m '^scrub: ' refuse "scrub: core pre-commit reads file names" pre_commit "$sc"
 
+# The paths HEAD's CODEOWNERS lists need a "Protected: <why>" line, checked in commit-msg
+pr="$work/pr" && fixture "$pr" && mkdir -p "$pr/.github" "$pr/Sources/Models" "$pr/d" &&
+    printf '# owners\n/a.txt @OWNER\n/Sources/Models/ @OWNER\n/Package.resolved\n/d/*\n!/d/x.txt\n' > "$pr/.github/CODEOWNERS" &&
+    for f in a.txt Sources/Models/M.swift d/x.txt; do echo a > "$pr/$f"; done && git -C "$pr" add -A &&
+    git -C "$pr" commit -qm init || exit 1
+# change <repository> <file...>: each file staged with one more line, from HEAD's state
+change() { r="$1" && shift && restore "$r" && for f; do mkdir -p "$r/$(dirname "$f")" && echo b >> "$r/$f"; done && git -C "$r" add -f "$@" || exit 1; }
+change "$pr" a.txt
+message 'fix: x\n';                                     expect -m 'a.txt' refuse "protected: no line" commit_msg "$pr"
+message 'fix: x\n\nProtected: the owner asked for it\n'; expect pass  "protected: line passes" commit_msg "$pr"
+message 'fix: x\n\nProtected:   \n';                    expect refuse "protected: empty reason" commit_msg "$pr"
+message 'fix: x\n\n# Protected: the owner asked\n';     expect refuse "protected: comment doesn't count" commit_msg "$pr"
+printf '/docs/\n' > "$pr/.gitignore"
+message 'fix: x\n\nProtected: see docs/why.md\n';       expect -m 'docs/why.md' refuse "protected: reason names docs/" commit_msg "$pr"
+rm "$pr/.gitignore"
+message 'fix: x\n'
+change "$pr" sub/Package.resolved;                      expect pass   "protected: anchored pattern" commit_msg "$pr"
+change "$pr" PACKAGE.RESOLVED;                          expect pass   "protected: case matters" commit_msg "$pr"
+change "$pr" Sources/Models/A/B.swift;                  expect -m 'Sources/Models/A/B.swift' refuse "protected: folder pattern with an owner" commit_msg "$pr"
+printf 'b.txt\n' > "$pr/.gitignore" && change "$pr" b.txt; expect pass "protected: project's .gitignore ignored" commit_msg "$pr"
+rm "$pr/.gitignore" && printf 'c.txt\n' > "$work/excludes" && git config --global core.excludesFile "$work/excludes" || exit 1
+change "$pr" c.txt;                                     expect pass   "protected: global excludes ignored" commit_msg "$pr"
+git config --global --unset core.excludesFile
+change "$pr" d/x.txt;                                   expect -m 'd/x.txt' refuse "protected: ! lines dropped" commit_msg "$pr"
+restore "$pr" && git -C "$pr" rm -q --cached a.txt || exit 1
+expect -m 'a.txt' refuse "protected: delete" commit_msg "$pr"
+restore "$pr" && git -C "$pr" mv Sources/Models/M.swift M.swift || exit 1
+expect -m 'Sources/Models/M.swift' refuse "protected: rename out" commit_msg "$pr"
+restore "$pr" && rm -f "$pr/M.swift"
+# A merge brings the other side's protected changes, which CI checks on their own commits.
+git -C "$pr" checkout -q -b other && echo b >> "$pr/a.txt" && git -C "$pr" commit -qam other && git -C "$pr" checkout -q feat &&
+    git -C "$pr" merge -q --no-ff --no-commit other >/dev/null 2>&1 || exit 1
+message 'fix: merge other\n';                           expect pass   "protected: merge skipped" commit_msg "$pr"
+git -C "$pr" merge --abort || exit 1
+# A real commit in a linked worktree, where git sets GIT_DIR for the hooks
+git -C "$pr" worktree add -q -b wt "$work/prw" && git -C "$pr" config core.hooksPath "$root/core/hooks" || exit 1
+expect -m 'a.txt' refuse "protected: in a linked worktree" sh -c "cd '$work/prw' && echo b >> a.txt && git commit -qam 'fix: x'"
+expect pass "protected: a linked worktree leaves the main clone's core.bare" [ "$(git -C "$pr" config --bool core.bare)" = false ]
+
+# Which CODEOWNERS: the first of .github/, the root and docs/, read from HEAD; docs/ skipped where the notes are private
+# owners <name> <file:line...>: a repository whose HEAD has a.txt and each file with its one line
+owners() {
+    r="$work/$1" && shift && fixture "$r" && echo a > "$r/a.txt" || exit 1
+    for o; do mkdir -p "$r/$(dirname "${o%%:*}")" && printf '%s\n' "${o#*:}" > "$r/${o%%:*}" || exit 1; done
+    git -C "$r" add -Af && git -C "$r" commit -qm init || exit 1
+}
+owners pu CODEOWNERS:/a.txt && change "$work/pu" a.txt && : > "$work/pu/CODEOWNERS" && git -C "$work/pu" add CODEOWNERS || exit 1
+expect -m 'a.txt' refuse "protected: unprotect and change at once" commit_msg "$work/pu"
+owners pn && change "$work/pn" a.txt;                   expect pass   "protected: no CODEOWNERS" commit_msg "$work/pn"
+owners pt CODEOWNERS:/a.txt && change "$work/pt" a.txt; expect -m 'a.txt' refuse "protected: root CODEOWNERS" commit_msg "$work/pt"
+owners pb .github/CODEOWNERS:/b.txt CODEOWNERS:/a.txt && change "$work/pb" a.txt
+expect pass "protected: .github wins" commit_msg "$work/pb"
+owners pd .gitignore:/docs/ docs/CODEOWNERS:/a.txt && change "$work/pd" a.txt
+expect pass "protected: private docs/CODEOWNERS ignored" commit_msg "$work/pd"
+
 # scripts/hooks (the scrub check), in a throwaway repository with its own word list.
 # The refusals must be scrub.sh's own, so a hook that can't find it fails them.
 repo="$work/repo"
