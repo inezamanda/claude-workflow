@@ -144,9 +144,11 @@ PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project succeeds" [ $? -eq 0 ]
 for f in AGENTS.md docs/CLAUDE.md CONTRIBUTING.md scripts/hooks/commit-msg .claude/agents/code-reviewer.md \
     .github/workflows/review.yml .github/pull_request_template.md \
-    docs/templates/spec.md docs/templates/decisions.md docs/templates/edge-list.md; do
+    docs/templates/spec.md docs/templates/decisions.md docs/templates/edge-list.md .agents/skills/README.md; do
     check "project adds $f" [ -f "$f" ]
 done
+check "project links .claude/skills to .agents/skills" [ "$(readlink .claude/skills)" = ../.agents/skills ]
+check "the .claude/skills link resolves" [ -f .claude/skills/README.md ]
 check "project's .gitattributes merges the decisions log with union" grep -qxF "docs/decisions.md merge=union" .gitattributes
 check "project adds no decisions log of its own" [ ! -e docs/decisions.md ]
 check "project's AGENTS.md lists CONTRIBUTING.md and docs/CLAUDE.md to read" \
@@ -162,6 +164,8 @@ echo mine > docs/CLAUDE.md
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "a second project run keeps an edited template" [ "$(cat docs/CLAUDE.md)" = mine ]
 check "a second project run says it kept it" grep -q "kept docs/CLAUDE.md" "$work/out"
+check "a second project run keeps the skills link" [ "$(readlink .claude/skills)" = ../.agents/skills ]
+check "a second project run says nothing about the skills link" sh -c "! grep -q 'claude/skills' '$work/out'"
 
 # project --apple
 mkdir -p "$work/p2" && cd "$work/p2" && git init -q || exit 1
@@ -196,12 +200,15 @@ check "project --apple under the code smells lists three to read" \
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1
 echo "*.png binary" > .gitattributes
+mkdir -p .claude/skills/ours
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "an existing CLAUDE.md is left as it was" [ "$(cat CLAUDE.md)" = "# our rules" ]
 check "it lists the imports to add" grep -q "@docs/CLAUDE.md" "$work/out"
 check "it lists AGENTS.md among the imports to add" grep -qx "  @AGENTS.md" "$work/out"
 check "an existing .gitattributes is left as it was" [ "$(cat .gitattributes)" = "*.png binary" ]
 check "it gives the union line to add" grep -qF "  docs/decisions.md merge=union" "$work/out"
+check "a .claude/skills folder of the project's own is kept" sh -c "[ -d .claude/skills/ours ] && [ ! -L .claude/skills ]"
+check "it says how to link .claude/skills instead" grep -qF "ln -s ../.agents/skills .claude/skills" "$work/out"
 echo "docs/decisions.md merge=union" >> .gitattributes
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "with the union line there, it doesn't ask for it" sh -c "! grep -q 'merge=union' '$work/out'"

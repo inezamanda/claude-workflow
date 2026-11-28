@@ -175,6 +175,17 @@ project() {
     copy core/templates/spec.md docs/templates/spec.md
     copy core/templates/decisions.md docs/templates/decisions.md
     copy core/templates/edge-list.md docs/templates/edge-list.md
+    copy core/skills/README.md .agents/skills/README.md
+
+    # Every other tool reads skills from .agents/skills; Claude Code reads .claude/skills, so it gets a link.
+    if [ "$(readlink .claude/skills 2>/dev/null)" != ../.agents/skills ]; then
+        if [ -e .claude/skills ] || [ -L .claude/skills ]; then
+            skip ".claude/skills is already there; move its skills to .agents/skills, then run: ln -s ../.agents/skills .claude/skills"
+        else
+            mkdir -p .claude && ln -s ../.agents/skills .claude/skills && say "linked .claude/skills to .agents/skills" ||
+                fail "couldn't link .claude/skills"
+        fi
+    fi
 
     # Two branches that each add rows to the append-only decisions log then merge without a conflict.
     union="docs/decisions.md merge=union"
