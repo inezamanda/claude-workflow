@@ -157,5 +157,6 @@ The question: does a test writer that works from the spec, before the code exist
 | 2 | `feat: rename the command and its clone to agent-workflow` | 338dd42 | Test fixes kept in the same commit |
 | 3 | `docs: add the plan and the decisions log` | 5ff7ca6 | OK as proposed |
 | 4 | `docs: add templates for a spec, a decisions log and an edge list` | 9511f6d | OK as proposed; templates go to `docs/templates/` on the agent's recommendation |
+| 5 | `refactor: split the global instructions into AGENTS.md and a Claude adapter` | c40c180 | OK as proposed; `install.sh` run after it to relink `~/.claude` |
 
-Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 5, which also commits the notes changed since commit 4. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).
+Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 6, which also commits the notes changed since commit 5. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).

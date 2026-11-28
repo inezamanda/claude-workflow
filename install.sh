@@ -185,24 +185,41 @@ project() {
         printf '  %s\n' "$union" >&2
     fi
 
-    imports="@CONTRIBUTING.md @docs/CLAUDE.md"
+    reads="CONTRIBUTING.md docs/CLAUDE.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md
-        imports="@CONTRIBUTING.md @CODING.md @docs/CLAUDE.md"
+        reads="CONTRIBUTING.md CODING.md docs/CLAUDE.md"
         if smells="$(above apple/CLAUDE.md)"; then
             skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
         else
             copy apple/CLAUDE.md docs/code-smells.md
-            imports="$imports @docs/code-smells.md"
+            reads="$reads docs/code-smells.md"
         fi
     fi
 
-    # A CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.
-    if [ ! -e CLAUDE.md ]; then
-        printf '%s\n' $imports > CLAUDE.md && say "added CLAUDE.md, which imports the others" || fail "couldn't add CLAUDE.md"
+    # An AGENTS.md or CLAUDE.md that's already there may hold the project's own rules, so it's never rewritten.
+    # Every tool reads AGENTS.md, which says what to read; Claude Code reads CLAUDE.md, which imports the same files.
+    if [ ! -e AGENTS.md ]; then
+        list="$(printf '%s\n' $reads | sed 's/.*/- `&`/')" awk '
+            $0 == "<!-- files to read -->" { print ENVIRON["list"]; next }
+            { print }' "$repo/core/project/AGENTS.md" > AGENTS.md && say "added AGENTS.md, which lists what to read" ||
+            fail "couldn't add AGENTS.md"
     else
         missing=""
-        for line in $imports; do
+        for f in $reads; do
+            grep -qF "$f" AGENTS.md || missing="$missing $f"
+        done
+        if [ -n "$missing" ]; then
+            skip "AGENTS.md is already there; add these to the files it says to read:"
+            printf '  %s\n' $missing >&2
+        fi
+    fi
+    if [ ! -e CLAUDE.md ]; then
+        { cat "$repo/core/project/CLAUDE.md" && printf '@%s\n' $reads; } > CLAUDE.md &&
+            say "added CLAUDE.md, which imports AGENTS.md and the others" || fail "couldn't add CLAUDE.md"
+    else
+        missing=""
+        for line in @AGENTS.md $(printf '@%s ' $reads); do
             grep -qxF "$line" CLAUDE.md || missing="$missing $line"
         done
         if [ -n "$missing" ]; then

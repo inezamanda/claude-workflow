@@ -8,6 +8,9 @@ This is how I work with [Claude Code](https://claude.com/claude-code): the workf
 core/                              for any project
   global/AGENTS.md                 global instructions for every session, any tool
   global/CLAUDE.md                 Claude Code's part: imports AGENTS.md, then the plugins and skills
+  project/AGENTS.md                a project's root instructions for any tool: what to read, where the notes are
+  project/CLAUDE.md                a project's file for Claude Code: imports AGENTS.md and what it lists
+  CLAUDE.md                        forwards to global/CLAUDE.md, for links made before the global files moved
   principles.md                    how work is planned, proven, reviewed and committed
   CONTRIBUTING.md                  commits, branches and pull requests (a template)
   agents/code-reviewer.md          a read-only reviewer for a whole branch
@@ -50,10 +53,10 @@ agent-workflow project --apple     # a Swift or SwiftUI app
 
 | Command | Adds |
 | --- | --- |
-| `project` | `docs/CLAUDE.md` (the principles), `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, the spec, decisions log and edge list templates in `docs/templates/`, a `.gitattributes` that merges `docs/decisions.md` with `union`, and a root `CLAUDE.md` that imports them; it also sets `core.hooksPath` |
+| `project` | `docs/CLAUDE.md` (the principles), `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, the spec, decisions log and edge list templates in `docs/templates/`, a `.gitattributes` that merges `docs/decisions.md` with `union`, a root `AGENTS.md` that lists what to read, for any agent tool, and a root `CLAUDE.md` that imports `AGENTS.md` and the same files; it also sets `core.hooksPath` |
 | `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, the swift-lsp plugin and the three Swift skills |
 
-It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has a `CLAUDE.md` of its own, it prints the import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
+It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has an `AGENTS.md` or `CLAUDE.md` of its own, it prints the files or import lines to add instead. Then fill in the `<placeholders>`. `review.yml` needs a `CLAUDE_CODE_OAUTH_TOKEN` secret, made with `claude setup-token`.
 
 `principles.md` describes two levels: **full**, for projects that hold people's data, money or credentials, and **light**, for everything else. Pick one in each plan.
 
