@@ -5,16 +5,16 @@
 #   install.sh project            the same, then the templates into the current folder
 #   install.sh project --apple    also the Apple coding guide and code smells, swift-lsp and the Swift skills
 #
-# After the first run it's on the PATH as claude-workflow.
-# Without a clone: curl -fsSL https://raw.githubusercontent.com/inezamanda/claude-workflow/main/install.sh | sh
+# After the first run it's on the PATH as agent-workflow.
+# Without a clone: curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
 
-REPO_URL="${CLAUDE_WORKFLOW_REPO_URL:-https://github.com/inezamanda/claude-workflow.git}"
+REPO_URL="${AGENT_WORKFLOW_REPO_URL:-https://github.com/inezamanda/agent-workflow.git}"
 failed=0
 
 say() { printf '%s\n' "$*"; }
-skip() { printf 'claude-workflow: %s\n' "$*" >&2; }
+skip() { printf 'agent-workflow: %s\n' "$*" >&2; }
 fail() {
-    printf 'claude-workflow: %s\n' "$*" >&2
+    printf 'agent-workflow: %s\n' "$*" >&2
     failed=1
 }
 
@@ -22,7 +22,7 @@ usage() {
     sed -n '3,7p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
 }
 
-# The clone this script runs from (through the claude-workflow link too), or ~/.claude-workflow when it was
+# The clone this script runs from (through the agent-workflow link too), or ~/.agent-workflow when it was
 # piped in from curl.
 find_repo() {
     file="$0"
@@ -34,12 +34,23 @@ find_repo() {
         esac
     done
     dir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)"
+    new="$HOME/.agent-workflow" old="$HOME/.claude-workflow"
     if [ -n "$dir" ] && [ -f "$dir/install.sh" ] && [ -f "$dir/core/CLAUDE.md" ]; then
         repo="$dir"
-        return
+    else
+        repo="$new"
     fi
-    repo="$HOME/.claude-workflow"
-    if [ ! -d "$repo/.git" ]; then
+    # The clone was called ~/.claude-workflow before the repository was renamed: move it once. A clone kept
+    # anywhere else is the maintainer's own, and stays where it is.
+    if { [ "$repo" = "$old" ] || [ "$repo" = "$new" ]; } && [ -d "$old/.git" ]; then
+        if [ -e "$new" ]; then
+            skip "$new is there too, so it left $old as it is"
+        else
+            mv "$old" "$new" && say "moved $old to $new" || { fail "couldn't move $old to $new"; exit 1; }
+            repo="$new"
+        fi
+    fi
+    if [ "$repo" = "$new" ] && [ ! -d "$repo/.git" ]; then
         git clone -q "$REPO_URL" "$repo" && say "cloned the workflow to $repo" ||
             { fail "couldn't clone $REPO_URL"; exit 1; }
     fi
@@ -67,7 +78,7 @@ link() {
 # plugins <plugin@marketplace=owner/repo>...: installs each plugin that isn't installed yet.
 plugins() {
     if ! command -v claude >/dev/null 2>&1; then
-        skip "Claude Code isn't installed, so the plugins were skipped; install it and run claude-workflow again"
+        skip "Claude Code isn't installed, so the plugins were skipped; install it and run agent-workflow again"
         return
     fi
     installed="$(claude plugin list 2>/dev/null)"
@@ -92,7 +103,7 @@ graphify_tool() {
         fi
         uv tool install -q graphifyy && say "installed graphify" || { fail "couldn't install graphify"; return; }
         command -v graphify >/dev/null 2>&1 ||
-            { skip "graphify is installed but not on the PATH yet; open a new shell and run claude-workflow again"; return; }
+            { skip "graphify is installed but not on the PATH yet; open a new shell and run agent-workflow again"; return; }
     fi
     [ -d "$HOME/.claude/skills/graphify" ] && return
     graphify install --platform claude >/dev/null && say "installed graphify's Claude skill" ||
@@ -102,10 +113,15 @@ graphify_tool() {
 machine() {
     update_repo
     link "$repo/core/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-    link "$repo/install.sh" "$HOME/.local/bin/claude-workflow"
+    link "$repo/install.sh" "$HOME/.local/bin/agent-workflow"
+    # The command was called claude-workflow before the rename; its link only ever pointed at this script.
+    old_command="$HOME/.local/bin/claude-workflow"
+    if [ -L "$old_command" ] && [ "$(basename "$(readlink "$old_command")")" = install.sh ]; then
+        rm "$old_command" && say "removed the old claude-workflow command; it's agent-workflow now"
+    fi
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
-        *) skip "add ~/.local/bin to your PATH to run claude-workflow by name" ;;
+        *) skip "add ~/.local/bin to your PATH to run agent-workflow by name" ;;
     esac
     plugins \
         caveman@caveman=JuliusBrussee/caveman \
@@ -136,12 +152,12 @@ above() {
 
 project() {
     if [ "$(pwd -P)" = "$repo" ]; then
-        fail "this is the workflow's own clone; run claude-workflow project in the project's folder"
+        fail "this is the workflow's own clone; run agent-workflow project in the project's folder"
         return
     fi
     top="$(git rev-parse --show-toplevel 2>/dev/null)"
     if [ -n "$top" ] && [ "$(cd "$top" && pwd -P)" != "$(pwd -P)" ]; then
-        fail "the templates go at the repository's root; run claude-workflow project in $top"
+        fail "the templates go at the repository's root; run agent-workflow project in $top"
         return
     fi
     copy core/principles.md docs/CLAUDE.md

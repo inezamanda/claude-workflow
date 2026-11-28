@@ -1,4 +1,4 @@
-# claude-workflow
+# agent-workflow
 
 This is how I work with [Claude Code](https://claude.com/claude-code): the workflow I've found keeps my projects small, reviewable and safe. The agent writes the code; I decide, review every commit before it goes in, and understand each step. It's tuned for apps on Apple platforms, but most of it holds for any project.
 
@@ -27,23 +27,23 @@ Files marked as templates have `<placeholders>` and `<!-- notes -->` to fill in 
 **Once per machine**, a Mac or a Linux VM:
 
 ```sh
-git clone https://github.com/inezamanda/claude-workflow.git ~/.claude-workflow
-~/.claude-workflow/install.sh
+git clone https://github.com/inezamanda/agent-workflow.git ~/.agent-workflow
+~/.agent-workflow/install.sh
 ```
 
-Or without cloning first, which clones to `~/.claude-workflow` for you:
+Or without cloning first, which clones to `~/.agent-workflow` for you:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/inezamanda/claude-workflow/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
 ```
 
-It links `~/.claude/CLAUDE.md` to `core/CLAUDE.md` (moving an old one to a dated backup), puts a `claude-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
+It links `~/.claude/CLAUDE.md` to `core/CLAUDE.md` (moving an old one to a dated backup), puts an `agent-workflow` command in `~/.local/bin`, and installs the plugins below. Each step is skipped when it's done, so it's safe to run again. Claude Code loads `~/.claude/CLAUDE.md` in every project, and a project's own `CLAUDE.md` wins where the two differ.
 
 **In a new project**, at the root of its repository:
 
 ```sh
-claude-workflow project            # any project
-claude-workflow project --apple    # a Swift or SwiftUI app
+agent-workflow project             # any project
+agent-workflow project --apple     # a Swift or SwiftUI app
 ```
 
 | Command | Adds |
@@ -80,4 +80,4 @@ They refuse a commit whose changes or message contain a word from `.git/info/scr
 
 ## Updating
 
-Run `claude-workflow`. It pulls the clone, which `~/.claude/CLAUDE.md` links to, and installs any plugin that's new. Whatever the clone has checked out is live: an edit, or another branch, reaches every session at once. For a bigger change, work in a separate `git worktree` and merge it when it's done.
+Run `agent-workflow`. It pulls the clone, which `~/.claude/CLAUDE.md` links to, and installs any plugin that's new. Whatever the clone has checked out is live: an edit, or another branch, reaches every session at once. For a bigger change, work in a separate `git worktree` and merge it when it's done. A clone from before the rename, at `~/.claude-workflow`, moves to `~/.agent-workflow` on its next run, and the old `claude-workflow` command goes. After moving or renaming a clone yourself, run its `install.sh` again: the links point into it, and nothing else notices that they broke.
