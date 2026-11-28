@@ -17,4 +17,9 @@
 /.claude/settings.json @OWNER
 /.claude/hooks/ @OWNER
 
+# The Swift lint configs, which agent-workflow project --apple adds, so no commit loosens a rule to get past the
+# hook without saying why. Until the files exist they protect nothing.
+/.swiftlint.yml @OWNER
+/.swift-format @OWNER
+
 # The project's own, for example the stored data models, the lockfiles and the release config

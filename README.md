@@ -30,6 +30,10 @@ core/                              for any project
 apple/                             for Swift and SwiftUI apps, on top of core/
   CLAUDE.md                        a code-smell table for Swift
   CODING.md                        a coding guide (a template)
+  swift-format.json, swiftlint.yml the lint configs, copied as .swift-format and .swiftlint.yml
+  hooks/pre-commit-swift           lints the staged Swift files; core's pre-commit runs it
+  github/checks-swift.yml          the same lint, and the package tests, on Linux in CI (advisory)
+  skills/                          three Instruments skills from Axiom, each with its LICENSE and SOURCE.md
 install.sh                         sets up a machine, and copies the templates into a project
 scripts/                           this repository's own hooks, and the tests
 ```
@@ -63,7 +67,7 @@ agent-workflow project --apple     # a Swift or SwiftUI app
 | Command | Adds |
 | --- | --- |
 | `project` | `docs/principles.md`, `CONTRIBUTING.md`, `scripts/hooks/` (`commit-msg`, `pre-commit`, `checks.sh` and `scrub.sh`; a kept copy that differs from `core/hooks/` is warned about), `scripts/ci-checks.sh` and `.github/workflows/checks.yml`, which run them on every commit of a pull request (`checks.yml` only once the hooks know CI), `.claude/settings.json` and `.claude/hooks/protected-edit.sh`, which ask before Claude edits a protected path (a kept `settings.json` gets the block to add), `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, `.github/CODEOWNERS` unless the project has one (then it prints the lines to add), the spec, decisions log and edge list templates in `docs/templates/`, a `.gitattributes` that merges `docs/decisions.md` with `union`, `.agents/skills/` for the project's own skills with a `.claude/skills` link to it, a root `AGENTS.md` that lists what to read, for any agent tool, and a root `CLAUDE.md` that imports `AGENTS.md` and the same files; it also sets `core.hooksPath` |
-| `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, the swift-lsp plugin and the three Swift skills |
+| `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`; `.swift-format` and `.swiftlint.yml` (protected in `CODEOWNERS`); `scripts/hooks/pre-commit-swift`, which refuses a commit whose staged Swift files fail swift-format or SwiftLint, or are only partly staged; `.github/workflows/checks-swift.yml`, which runs the same lint and the packages listed in its `PACKAGES` on Linux, without blocking a merge; the swift-lsp plugin and the three Swift skills, and three Instruments skills from [Axiom](https://github.com/CharlesWiltgen/Axiom) (`performance-profiling`, `memory-debugging`, `swiftui-performance`) in `.agents/skills/`, each with Axiom's MIT `LICENSE` and a `SOURCE.md` that says where it came from, and Apple's Xcode plugin for this project only; `.claude/settings.local.json` goes in `.gitignore` |
 
 It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has an `AGENTS.md` or `CLAUDE.md` of its own, it prints the files or import lines to add instead; if it has a `.claude/skills` folder, it prints the command that links it. A project set up before the principles were renamed has them as `docs/CLAUDE.md`, so when that file is there it doesn't add `docs/principles.md`; it prints the `git mv` to run and the lines to change.
 
@@ -79,6 +83,8 @@ Where the notes are private, because `docs/` is git-ignored or a repository of i
 - [caveman](https://github.com/JuliusBrussee/caveman): terse replies in routine chat.
 - [ponytail](https://github.com/DietrichGebert/ponytail): the smallest change that solves the task.
 - [graphify](https://github.com/Graphify-Labs/graphify): a code graph to ask before searching files. It needs [uv](https://docs.astral.sh/uv/); without it, the script skips graphify and says so.
+- Apple's Xcode plugin (`xcode@claude-plugins-official`), with `--apple` only, for that project and its linked worktrees (local scope, `.claude/settings.local.json`): Apple's skills for SwiftUI, accessibility and App Intents, and Xcode's tools (build, test, previews, documentation search) through `xcrun mcpbridge`. It needs Xcode 27 or later; without it, the script skips the plugin and says so. Claude Code installs it by running `xcrun agent plugin path --plugin-format claude`, and the script accepts only that command: if the marketplace ever shows another, it prints it and installs nothing. Its skills add about 4k tokens to every session in that project. The first time an agent opens or creates a project through Xcode's tools, Xcode asks you to approve it.
+- SwiftLint, with `--apple` only, from Homebrew (`brew install swiftlint`), and swift-format, which comes with Xcode: `pre-commit-swift` refuses every Swift commit while either is missing. CI's SwiftLint is the version in `checks-swift.yml`; a different one on the Mac only warns.
 - swift-lsp, with `--apple` only: Swift code navigation for Claude (definitions, references, types), from Xcode's `sourcekit-lsp`.
 - [Swift Concurrency Pro](https://github.com/twostraws/Swift-Concurrency-Agent-Skill), [SwiftUI Pro](https://github.com/twostraws/SwiftUI-Agent-Skill) and [Swift Testing Pro](https://github.com/twostraws/Swift-Testing-Agent-Skill), with `--apple` only: review and writing rules for modern Swift, by Paul Hudson. A skill's text becomes instructions to Claude, so keep auto-update off for their marketplaces in `/plugin`, read what changed, then run `/plugin update`. A project's `CODING.md` wins where they differ.
 

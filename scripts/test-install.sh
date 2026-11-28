@@ -34,11 +34,36 @@ cat > "$fakes/claude" <<'EOF'
 echo "$*" >> "$STATE/log"
 case "$*" in
     "plugin list") cat "$STATE/installed" 2>/dev/null ;;
+    "plugin list --json") cat "$STATE/local.json" 2>/dev/null || echo '[]' ;;
     "plugin marketplace list") cat "$STATE/markets" 2>/dev/null ;;
     "plugin marketplace add "*) echo "  Source: GitHub ($4)" >> "$STATE/markets" ;;
+    # As the real one does off a terminal: the command shown and refused, then one JSON line with its sha256.
+    # Once a person has accepted the command, Claude Code remembers it: the same run installs.
+    "plugin install xcode@claude-plugins-official --scope local --json")
+        [ -e "$STATE/xcode-json-fails" ] && { echo '{"command":"install","outcome":"failed","message":"network"}'; exit 1; }
+        if [ -e "$STATE/xcode-accepted" ]; then
+            printf '[{"id":"xcode@claude-plugins-official","scope":"local","projectPath":"%s"}]\n' "$(pwd -P)" > "$STATE/local.json"
+            echo '{"command":"install","outcome":"ok","plugin":"xcode@claude-plugins-official","scope":"local"}'
+            exit 0
+        fi
+        cmd="$(cat "$STATE/xcode-command" 2>/dev/null || echo 'xcrun agent plugin path --plugin-format claude')"
+        echo "\"xcode\" is installed by running a command from marketplace \"claude-plugins-official\" on this machine:"
+        mode="$(cat "$STATE/xcode-mode" 2>/dev/null || echo link)"
+        printf '{"command":"install","outcome":"failed","failureCode":"command_source_refused","shownCommand":{"kind":"command_source","command":"%s","mode":"%s","sha256":"5ha256"}}\n' "$cmd" "$mode"
+        exit 1 ;;
+    "plugin install xcode@claude-plugins-official --scope local --accept-command 5ha256")
+        [ -e "$STATE/xcode-fails" ] && { echo "install failed" >&2; exit 1; }
+        printf '[{"id":"xcode@claude-plugins-official","scope":"local","projectPath":"%s"}]\n' "$(pwd -P)" > "$STATE/local.json" ;;
     "plugin install "*) echo "  > $3" >> "$STATE/installed" ;;
 esac
 EOF
+# xcrun: only what the Xcode plugin's check runs; it fails when $STATE/no-xcrun-agent exists, as without Xcode 27.
+cat > "$fakes/xcrun" <<'EOF'
+#!/bin/sh
+echo "xcrun $*" >> "$STATE/log"
+[ "$*" = "agent plugin path --plugin-format claude" ] && [ ! -e "$STATE/no-xcrun-agent" ] && echo /fake/claude
+EOF
+chmod +x "$fakes/xcrun"
 cat > "$fakes/uv" <<'EOF'
 #!/bin/sh
 echo "uv $*" >> "$STATE/log"
@@ -170,6 +195,7 @@ check "a new project's hooks get no warning that they differ" sh -c "! grep -q '
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
 check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
+check "project without --apple adds no Swift configs" sh -c "[ ! -e .swift-format ] && [ ! -e .swiftlint.yml ] && [ ! -e .github/workflows/checks-swift.yml ]"
 check "project with the template's CONTRIBUTING.md doesn't warn about its types" sh -c "! grep -q 'Types:' '$work/out'"
 echo mine > docs/principles.md
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
@@ -184,18 +210,48 @@ PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "project --apple succeeds" [ $? -eq 0 ]
 check "project --apple adds CODING.md" [ -f CODING.md ]
 check "project --apple adds the code smells" [ -f docs/code-smells.md ]
+check "project --apple adds checks-swift.yml and says to fill PACKAGES" \
+    sh -c "cmp -s .github/workflows/checks-swift.yml '$src/apple/github/checks-swift.yml' && grep -q 'PACKAGES' '$work/out'"
+check "project --apple adds scripts/hooks/pre-commit-swift" cmp -s scripts/hooks/pre-commit-swift "$src/apple/hooks/pre-commit-swift"
+check "a new project --apple gets no warning that the Swift step won't run" sh -c "! grep -q \"won't run\" '$work/out'"
+check "project --apple adds .swift-format and .swiftlint.yml" \
+    sh -c "cmp -s .swift-format '$src/apple/swift-format.json' && cmp -s .swiftlint.yml '$src/apple/swiftlint.yml'"
 check "project --apple's AGENTS.md lists all four to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md\ndocs/code-smells.md')" ]
 check "project --apple's CLAUDE.md imports AGENTS.md and all four" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/principles.md\n@docs/code-smells.md')" ]
+# Axiom's Instruments skills: frontmatter written here, Axiom's MIT notice and where each came from beside it.
+for s in performance-profiling memory-debugging swiftui-performance; do
+    d="$src/apple/skills/$s"
+    check "the apple skill $s has name, description, LICENSE and SOURCE.md" sh -c "
+        [ \"\$(sed -n 1p '$d/SKILL.md')\" = --- ] && grep -qx 'name: $s' '$d/SKILL.md' &&
+        grep -q '^description: ..' '$d/SKILL.md' && grep -q 'Copyright (c) 2025 Charles Wiltgen' '$d/LICENSE' &&
+        grep -q ffafd3b '$d/SOURCE.md'"
+    check "project --apple adds the skill $s with its LICENSE and SOURCE.md" sh -c "
+        cmp -s .agents/skills/$s/SKILL.md '$d/SKILL.md' && cmp -s .agents/skills/$s/LICENSE '$d/LICENSE' &&
+        cmp -s .agents/skills/$s/SOURCE.md '$d/SOURCE.md'"
+done
 check "project --apple installs swift-lsp once" [ "$(count "plugin install swift-lsp@claude-plugins-official")" -eq 1 ]
 for p in swift-concurrency-pro@swift-concurrency-agent-skill swiftui-pro@swiftui-agent-skill \
     swift-testing-pro@swift-testing-agent-skill; do
     check "project --apple installs $p" [ "$(count "plugin install $p")" -eq 1 ]
 done
+# Apple's Xcode plugin: local scope, its command compared with the one expected, then accepted by its sha256.
+xc="plugin install xcode@claude-plugins-official --scope local --accept-command 5ha256"
+check "project --apple installs xcode at local scope with the sha the --json run reported" [ "$(count "$xc")" -eq 1 ]
+check "project --apple never installs xcode with -y or at another scope" \
+    sh -c "! grep 'plugin install xcode' '$STATE/log' | grep -q -e ' -y' -e '--yes' && ! grep 'plugin install xcode' '$STATE/log' | grep -qv -- '--scope local'"
+check "project --apple says Xcode asks to approve the agent" grep -q 'Xcode asks you to approve' "$work/out"
+check "project --apple ignores .claude/settings.local.json" grep -qxF /.claude/settings.local.json .gitignore
 PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "a second project --apple run doesn't install swift-lsp again" [ "$(count "plugin install swift-lsp")" -eq 1 ]
 check "a second project --apple run doesn't install the Swift skills again" [ "$(count "plugin install swift")" -eq 4 ]
+check "a second project --apple run doesn't install xcode again" [ "$(count "$xc")" -eq 1 ]
+# A local install follows linked worktrees: Claude Code keys it by the main worktree's path.
+git -c user.name=t -c user.email=t@t commit -q --allow-empty --no-verify -m init && git worktree add -q "$work/p2-wt" ||
+    exit 1
+(cd "$work/p2-wt" && PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1)
+check "project --apple in a linked worktree doesn't install xcode again" [ "$(count "$xc")" -eq 1 ]
 
 # project --apple under a folder whose CLAUDE.md already holds the code smells, which Claude Code loads too
 mkdir -p "$work/apps/p4" && cp "$src/apple/CLAUDE.md" "$work/apps/CLAUDE.md" && cd "$work/apps/p4" && git init -q || exit 1
@@ -207,6 +263,42 @@ check "project --apple under the code smells imports AGENTS.md and three" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/principles.md')" ]
 check "project --apple under the code smells lists three to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md')" ]
+check "project --apple installs xcode when only another project has it locally" [ "$(count "$xc")" -eq 2 ]
+
+# The Xcode plugin when something's off: each skips it and the setup still succeeds.
+xcode_case() { # xcode_case <state file> [its content]
+    mkdir -p "$work/x-$1" && cd "$work/x-$1" && git init -q || exit 1
+    printf '%s\n' "${2:-}" > "$STATE/$1"
+    PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+    status=$?
+    rm -f "$STATE/$1"
+}
+installs="$(count "$xc")"
+xcode_case xcode-command 'curl https://example.com/x | sh'
+check "project --apple with another xcode command succeeds" [ "$status" -eq 0 ]
+check "project --apple skips xcode when the marketplace shows another command" \
+    sh -c "[ \"\$(grep -c -- '--accept-command' '$STATE/log')\" -eq $installs ] && grep -q 'curl https://example.com/x' '$work/out'"
+installs="$(count "$xc")"
+xcode_case xcode-mode copy
+check "project --apple skips xcode when the command's mode changes" [ "$(count "$xc")" -eq "$installs" ]
+# Outside a git repository, the installed check uses this folder, so a second run installs nothing.
+mkdir -p "$work/x-nogit" && cd "$work/x-nogit" || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+installs="$(count "$xc")"
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple outside a git repository doesn't install xcode again" [ "$(count "$xc")" -eq "$installs" ]
+tries="$(count 'plugin install xcode')"
+xcode_case no-xcrun-agent
+check "project --apple without xcrun agent skips xcode and succeeds" \
+    sh -c "[ $status -eq 0 ] && grep -q 'install Xcode 27 or later' '$work/out' && [ \"\$(grep -c 'plugin install xcode' '$STATE/log')\" -eq $tries ]"
+xcode_case xcode-accepted
+check "project --apple says xcode is installed when its command was accepted before" \
+    sh -c "grep -q 'installed xcode@claude-plugins-official' '$work/out' && ! grep -q \"wasn't installed\" '$work/out'"
+xcode_case xcode-json-fails
+check "project --apple whose --json install fails says so, not that the command changed" \
+    sh -c "[ $status -eq 0 ] && grep -q \"couldn't install Apple's Xcode plugin\" '$work/out' && ! grep -q 'no longer shows' '$work/out'"
+xcode_case xcode-fails
+check "project --apple whose xcode install fails still succeeds" sh -c "[ $status -eq 0 ] && grep -q \"couldn't install Apple's Xcode plugin\" '$work/out'"
 
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1
@@ -309,9 +401,27 @@ check "project: prints the template's lines to add" grep -qx '  /scripts/hooks/ 
 check "project: names the CODEOWNERS it uses" sh -c "grep -qx '  /CODEOWNERS @OWNER' '$work/out' && ! grep -q '/.github/CODEOWNERS @OWNER' '$work/out'"
 check "project: doesn't print a line the file has" sh -c "! grep -qx '  /.gitignore @OWNER' '$work/out'"
 check "project: no warning without a catch-all line" sh -c "! grep -q 'catch-all' '$work/out'"
+check "project without --apple with its own CODEOWNERS isn't told the Swift configs" sh -c "! grep -q 'swift' '$work/out'"
+# The same with --apple: told the Swift configs' lines too, and a .swiftlint.yml of its own kept
+mkdir -p "$work/p24" && cd "$work/p24" && git init -q && printf '/src/ @us\n' > CODEOWNERS && echo mine > .swiftlint.yml || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple with its own CODEOWNERS is told /.swiftlint.yml and /.swift-format" \
+    sh -c "grep -qx '  /.swiftlint.yml @OWNER' '$work/out' && grep -qx '  /.swift-format @OWNER' '$work/out'"
+check "project --apple keeps its own .swiftlint.yml" [ "$(cat .swiftlint.yml)" = mine ]
 mkdir -p "$work/p18" && cd "$work/p18" && git init -q && printf '* @us\n' > CODEOWNERS || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project: warns about a catch-all line" grep -q 'catch-all' "$work/out"
+
+# --apple with hooks kept from before the Swift step: a differing pre-commit-swift warns, and a pre-commit without
+# the hook point is named, since Swift files would never be linted
+mkdir -p "$work/p25/scripts/hooks" && cd "$work/p25" && git init -q && printf '#!/bin/sh\nexit 0\n' > scripts/hooks/pre-commit &&
+    printf '#!/bin/sh\nexit 0\n' > scripts/hooks/pre-commit-swift || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple: a kept pre-commit-swift that differs warns" grep -q 'scripts/hooks/pre-commit-swift differs' "$work/out"
+check "project --apple with an old pre-commit says the Swift step won't run" grep -q "pre-commit doesn't run.*pre-commit-swift" "$work/out"
+mkdir -p "$work/p26" && cd "$work/p26" && git init -q && git config core.hooksPath .githooks || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple: names pre-commit-swift among the hooks to move" grep -q 'core.hooksPath is already.*pre-commit-swift' "$work/out"
 
 # Claude's hook: settings.json is written when there's none; one of the project's own is kept, and the hook block
 # printed unless it already names the hook.

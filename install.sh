@@ -3,7 +3,8 @@
 #
 #   install.sh                    the clone, ~/.claude/CLAUDE.md and AGENTS.md, the plugins and graphify
 #   install.sh project            the same, then the templates into the current folder
-#   install.sh project --apple    also the Apple coding guide and code smells, swift-lsp and the Swift skills
+#   install.sh project --apple    also the Apple coding guide and code smells, the Swift lint configs, hook and CI,
+#                                  swift-lsp, the Swift skills, three Instruments skills and the Xcode plugin
 #
 # After the first run it's on the PATH as agent-workflow.
 # Without a clone: curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
@@ -19,7 +20,7 @@ fail() {
 }
 
 usage() {
-    sed -n '3,7p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+    sed -n '3,8p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
 }
 
 # The clone this script runs from (through the agent-workflow link too), or ~/.agent-workflow when it was
@@ -93,6 +94,51 @@ plugins() {
         esac
         claude plugin install "$plugin" >/dev/null && say "installed $plugin" || fail "couldn't install $plugin"
     done
+}
+
+# xcode_plugin: Apple's Xcode plugin, for this project at local scope. It's installed by running a command the
+# marketplace declares; Claude Code shows that command and asks a person to accept it, so it's accepted here only
+# when it's the one below, by the sha256 the refused --json run reported.
+xcode_plugin() {
+    command -v claude >/dev/null 2>&1 || return # plugins already said they were skipped
+    if ! xcrun agent plugin path --plugin-format claude >/dev/null 2>&1; then
+        skip "Apple's Xcode plugin was skipped: install Xcode 27 or later, then run agent-workflow project --apple again"
+        return
+    fi
+    # Claude Code keys a local install by the main worktree's physical path, so linked worktrees share it; outside
+    # a repository, by this folder.
+    root="$(git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')"
+    root="$(cd "${root:-.}" && pwd -P)"
+    # Python, from Xcode, is there once xcrun agent is; JSON in sh is guesswork.
+    claude plugin list --json 2>/dev/null | python3 -I -c '
+import json, sys
+sys.exit(not any(p.get("id") == "xcode@claude-plugins-official" and p.get("scope") == "local"
+                 and p.get("projectPath") == sys.argv[1] for p in json.load(sys.stdin)))' "$root" && return
+    expected="xcrun agent plugin path --plugin-format claude"
+    shown="$(claude plugin install xcode@claude-plugins-official --scope local --json </dev/null 2>/dev/null | tail -n 1)"
+    # "ok" when it installed already, since Claude Code remembers a command a person accepted; "failed" when it
+    # failed with no command or sha shown; empty when the command shown, or how it's run, isn't the expected one.
+    sha="$(printf '%s' "$shown" | python3 -I -c '
+import json, sys
+d = json.load(sys.stdin)
+c = d.get("shownCommand")
+if d.get("outcome") == "ok": print("ok")
+elif not c or not c.get("sha256"): print("failed")
+elif (c.get("kind"), c.get("command"), c.get("mode")) == ("command_source", sys.argv[1], "link"): print(c["sha256"])' \
+        "$expected" 2>/dev/null || echo failed)"
+    xcode_added="installed xcode@claude-plugins-official for this project; Xcode asks you to approve each agent the first time it opens or creates a project through Xcode's tools"
+    not_installed="couldn't install Apple's Xcode plugin; to see why, run: claude plugin install xcode@claude-plugins-official --scope local"
+    case "$sha" in
+        ok) say "$xcode_added" ;;
+        failed) skip "$not_installed" ;;
+        "")
+            skip "Apple's Xcode plugin wasn't installed: its marketplace no longer shows the expected command ($expected). What it showed:"
+            printf '  %s\n' "$shown" >&2
+            skip "if that's safe to run, install it in your own terminal: claude plugin install xcode@claude-plugins-official --scope local" ;;
+        *)
+            claude plugin install xcode@claude-plugins-official --scope local --accept-command "$sha" >/dev/null 2>&1 &&
+                say "$xcode_added" || skip "$not_installed" ;;
+    esac
 }
 
 graphify_tool() {
@@ -232,8 +278,10 @@ project() {
         copy core/github/CODEOWNERS .github/CODEOWNERS
     else
         # The template protects itself as /.github/CODEOWNERS; here the file to protect is the project's own.
-        lines="$(awk -v own="/$owners" 'NR == FNR { have[$1]; next }
+        # The Swift configs' lines only with --apple, since only then does it add those files.
+        lines="$(awk -v own="/$owners" -v apple="$apple" 'NR == FNR { have[$1]; next }
             $1 == "/.github/CODEOWNERS" { $1 = own }
+            !apple && ($1 == "/.swiftlint.yml" || $1 == "/.swift-format") { next }
             NF && $1 !~ /^#/ && !($1 in have)' "$owners" "$repo/core/github/CODEOWNERS")"
         if [ -n "$lines" ]; then
             skip "$owners is already there; add these lines to it, so the hooks protect the guards:"
@@ -281,6 +329,18 @@ project() {
     reads="CONTRIBUTING.md docs/principles.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md
+        copy apple/swift-format.json .swift-format
+        copy apple/swiftlint.yml .swiftlint.yml
+        copy apple/github/checks-swift.yml .github/workflows/checks-swift.yml
+        # Axiom's Instruments skills; MIT wants its notice with every copy, so LICENSE goes too.
+        for s in performance-profiling memory-debugging swiftui-performance; do
+            for f in SKILL.md LICENSE SOURCE.md; do copy "apple/skills/$s/$f" ".agents/skills/$s/$f"; done
+        done
+        grep -q '^  PACKAGES: ""' .github/workflows/checks-swift.yml 2>/dev/null &&
+            say "to test Swift packages on Linux in CI, list them in PACKAGES in .github/workflows/checks-swift.yml"
+        guard apple/hooks/pre-commit-swift scripts/hooks/pre-commit-swift
+        grep -q pre-commit-swift scripts/hooks/pre-commit 2>/dev/null ||
+            skip "the kept scripts/hooks/pre-commit doesn't run scripts/hooks/pre-commit-swift, so the Swift step won't run; replace it with $repo/core/hooks/pre-commit"
         reads="CONTRIBUTING.md CODING.md docs/principles.md"
         if smells="$(above apple/CLAUDE.md)"; then
             skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
@@ -346,7 +406,8 @@ project() {
         if [ -z "$hooks" ]; then
             git config core.hooksPath scripts/hooks && say "set core.hooksPath to scripts/hooks" || fail "couldn't set core.hooksPath"
         elif [ "$hooks" != scripts/hooks ]; then
-            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit, checks.sh and scrub.sh there to use them"
+            swift="" && [ "$apple" = 1 ] && swift=", pre-commit-swift"
+            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit$swift, checks.sh and scrub.sh there to use them"
         fi
         list="$(git rev-parse --git-path info/scrub-words)"
         grep -q '[^[:space:]]' "$list" 2>/dev/null ||
@@ -358,6 +419,11 @@ project() {
         swift-concurrency-pro@swift-concurrency-agent-skill=twostraws/Swift-Concurrency-Agent-Skill \
         swiftui-pro@swiftui-agent-skill=twostraws/SwiftUI-Agent-Skill \
         swift-testing-pro@swift-testing-agent-skill=twostraws/Swift-Testing-Agent-Skill
+    if [ "$apple" = 1 ]; then
+        # A local install's setting is this Mac's; even a refused install writes the file.
+        ignore .claude/settings.local.json "since it holds this Mac's own Claude settings" committed
+        xcode_plugin
+    fi
 }
 
 mode=machine apple=0

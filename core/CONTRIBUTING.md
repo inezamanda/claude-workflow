@@ -17,6 +17,7 @@ Before every commit, the hooks refuse:
 - a word from the scrub list in the message or the staged changes. The list is `.git/info/scrub-words`, one word or phrase per line, such as real names; it stays in `.git`, so it's never committed, and the hooks refuse every commit until it exists;
 - where the notes are private, a commit that adds the notes, or a line or message that points into them;
 - a change to a path `CODEOWNERS` lists, unless the message has a line `Protected: <why>`;
+- where `scripts/hooks/pre-commit-swift` is installed (`agent-workflow project --apple`), a staged Swift file that swift-format or SwiftLint finds a problem in, a Swift file staged only in part, and a `.swiftlint.yml` or `.swift-format` with unstaged changes, since the tools read files from disk. SwiftLint's version is the image tag in `.github/workflows/checks-swift.yml`; a different one here only warns;
 - <!-- each check the project's hooks add, one line each -->
 
 They warn when a commit changes more than 200 lines outside tests. To fix up a protected change, use `git commit --fixup=amend:<commit>` or `--squash=<commit>` and keep the `Protected:` line: an autosquash drops a plain fixup's message, line included, and CI then fails.

@@ -21,6 +21,7 @@ Where the project has its own workflow (`AGENTS.md`, "Process"), its steps repla
 | Bug | systematic-debugging | `caveman:investigate-first`, `engineering:debug` |
 | Look something up | Explore or `caveman:cavecrew-investigator` | `caveman:caveman-explore`, general-purpose |
 | Verify before saying done | verification-before-completion | `caveman:verify-and-stop` |
+| Review SwiftUI | SwiftUI Pro (`swiftui-pro:swiftui-pro`) | Apple's `swiftui-specialist`, which is for writing SwiftUI code, not reviewing it |
 | Review | The project's `code-reviewer` agent. Elsewhere: requesting-code-review | `ponytail:ponytail-review`, `caveman:caveman-review`, `caveman:cavecrew-reviewer`, `engineering:code-review`, `feature-dev:code-reviewer` |
 | Finish a branch | The commit and push rule in `AGENTS.md` | finishing-a-development-branch, which offers to merge and push |
 
@@ -34,6 +35,7 @@ Where the project has its own workflow (`AGENTS.md`, "Process"), its steps repla
 
 **Subagents** (keep each agent's default model; don't force one globally):
 - Lookups ("where is X", "what calls Y"): `caveman:cavecrew-investigator` or Explore (both Haiku), when the answer needs a sweep across many files. A single grep or graphify query stays inline. Never general-purpose for lookups (it runs on Opus).
+- Reviewers, the project's `code-reviewer` or requesting-code-review's: pass `effort: "high"` on the call. The `code-reviewer` template sets it too.
 - A search that needs reading code rather than locating it (tracing a data flow, listing what breaks if X changes) may pass `model: sonnet` on that call.
 
 **graphify:** where `graphify-out/` exists, ask the graph before grepping: `graphify query "<question>"`, `graphify explain "X"`, `graphify affected "X"` (Bash, no LLM cost). `graphify update .` refreshes it for free after code changes. A full build costs tokens: only when the user runs `/graphify`, never on small repos.

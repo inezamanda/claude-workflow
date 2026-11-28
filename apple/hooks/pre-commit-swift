@@ -1,0 +1,50 @@
+#!/bin/sh
+# Lints the staged Swift files with swift-format and SwiftLint, as .github/workflows/checks-swift.yml does in CI.
+# pre-commit runs it as a process of its own when it's beside it, never in CI; agent-workflow project --apple
+# copies it there. The tools read files and configs from disk, so a Swift file must be staged whole, and the
+# configs (.swiftlint.yml, .swift-format) must have no unstaged change.
+. "$(dirname "$0")/checks.sh"
+
+swift="$(staged_paths | grep '\.swift$')"
+[ -n "$swift" ] || exit 0
+
+# The staged Swift files as literal pathspecs, so a [ or * in a name matches only that file.
+set --
+while IFS= read -r f; do set -- "$@" ":(literal)$f"; done <<EOF
+$swift
+EOF
+partly="$(git diff-files --name-only -- "$@")"
+[ -n "$partly" ] && refuse "only part of these is staged, and the tools would lint the rest too; stage all of each, or stash the rest:
+$partly"
+set -- ':(glob)**/.swiftlint.yml' ':(glob)**/.swift-format'
+configs="$(git diff-files --name-only -- "$@"; git ls-files --others --exclude-standard -- "$@")"
+[ -n "$configs" ] && refuse "these lint configs have changes that aren't staged, and the tools would read them; stage or stash them:
+$configs"
+[ "$fail" = 0 ] || exit 1
+
+command -v swiftlint >/dev/null || PATH="$PATH:${SWIFT_TOOLS_PATH:-/opt/homebrew/bin:/usr/local/bin}"
+command -v swiftlint >/dev/null || { refuse "SwiftLint isn't installed; install it with: brew install swiftlint"; exit 1; }
+# /usr/bin/swift is always there, so ask swift-format itself.
+swift format --version >/dev/null 2>&1 ||
+    { refuse "swift format doesn't run; install Xcode, then select it with: sudo xcode-select -s /Applications/Xcode.app"; exit 1; }
+
+# CI's SwiftLint decides; a different one here may find more or less, so it only warns.
+ci="$(sed -n 's/.*ghcr\.io\/realm\/swiftlint:\([0-9][0-9.]*\).*/\1/p' .github/workflows/checks-swift.yml 2>/dev/null | head -n 1)"
+here="$(swiftlint version 2>/dev/null)"
+[ -n "$ci" ] && [ "$here" != "$ci" ] &&
+    echo "pre-commit-swift: SwiftLint here is $here and CI's is $ci; CI's findings decide the pull request" >&2
+
+printf '%s\n' "$swift" | tr '\n' '\0' | xargs -0 swift format lint --strict ||
+    refuse "swift-format found the problems above; fix them, or run: swift format -i <file>"
+
+# Package.swift starts with swift-tools-version, so it has no header. --force-exclude makes SwiftLint skip what the
+# config excludes, as CI does; when that's every file, its only output is "No lintable files found".
+lint="$(printf '%s\n' "$swift" | grep -Ev '(^|/)Package\.swift$')"
+if [ -n "$lint" ]; then
+    out="$(printf '%s\n' "$lint" | tr '\n' '\0' | xargs -0 swiftlint lint --strict --quiet --force-exclude 2>&1)" ||
+        if printf '%s\n' "$out" | grep -qv '^Error: No lintable files found at paths:'; then
+            printf '%s\n' "$out" >&2
+            refuse "SwiftLint found the problems above"
+        fi
+fi
+exit $fail

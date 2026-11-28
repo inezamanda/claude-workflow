@@ -3,6 +3,7 @@ name: code-reviewer
 description: Reviews a branch's spec before any code, and the whole branch once at its last step, with fresh eyes, as the second reviewer after the maintainer, who reviewed each commit. Read-only; reports findings by severity and never edits.
 tools: Read, Grep, Glob, Bash, Skill
 model: opus
+effort: high
 ---
 
 <!-- Copy to .claude/agents/code-reviewer.md and fill in the <placeholders>. This file is tracked even where the notes are private: then write "the path AGENTS.md gives" for the design doc and the decisions log, never their paths. -->
