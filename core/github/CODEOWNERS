@@ -1,0 +1,20 @@
+# Who owns what, for GitHub, and the paths this project's hooks protect: a commit that adds, changes, moves or
+# deletes a path listed here needs a line "Protected: <why>" in its message. Replace @OWNER with your GitHub user
+# or team; the hooks read only each line's first field, the pattern, so they work before that.
+#
+# GitHub reads the first of .github/CODEOWNERS, CODEOWNERS and the one in the notes folder, so keep only one.
+# Patterns follow .gitignore's, with GitHub's limits: no lines starting with ! and no [ ] ranges. The hooks match
+# with git, which is wider: a/* also matches a/b/c, and a line without an owner still protects its paths here,
+# though on GitHub it leaves them unowned. A catch-all * line would make every commit need a Protected: line.
+
+# The guards themselves, so no commit switches one off without saying why
+/.github/CODEOWNERS @OWNER
+/.gitignore @OWNER
+/.gitattributes @OWNER
+/scripts/hooks/ @OWNER
+/scripts/ci-checks.sh @OWNER
+/.github/workflows/ @OWNER
+/.claude/settings.json @OWNER
+/.claude/hooks/ @OWNER
+
+# The project's own, for example the stored data models, the lockfiles and the release config

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Reads text on stdin and fails if it contains a word or phrase from .git/info/scrub-words.
 # The list lives inside .git, so the words it keeps out of the repository are never committed themselves.
-# Usage: <text> | scripts/scrub.sh "<what is being checked>"
+# Usage: <text> | core/hooks/scrub.sh "<what is being checked>"
 
 list="$(git rev-parse --git-path info/scrub-words)"
 patterns="$(mktemp)" || exit 1

@@ -16,9 +16,17 @@ core/                              for any project
   agents/code-reviewer.md          a read-only reviewer for a whole branch
   github/review.yml                a Claude review of each pull request
   github/pull_request_template.md
+  github/CODEOWNERS                the paths the hooks protect, the guards to start with
+  github/checks.yml                the hooks again on every commit of a pull request
+  checks/ci-checks.sh              what checks.yml runs
+  claude/settings.json             Claude Code's hook block for a project
+  claude/protected-edit.sh         asks before Claude edits a path CODEOWNERS lists
   templates/                       a branch's spec, a decisions log and an edge list
   skills/README.md                 how a project keeps its own skills, for every tool
-  hooks/commit-msg                 Conventional Commits, AI credit allowed or refused
+  hooks/commit-msg                 Conventional Commits, AI credit allowed or refused, scrub
+  hooks/pre-commit                 no commit on main, private paths, scrub, commit size
+  hooks/checks.sh                  shared by both hooks
+  hooks/scrub.sh                   the local scrub list check
 apple/                             for Swift and SwiftUI apps, on top of core/
   CLAUDE.md                        a code-smell table for Swift
   CODING.md                        a coding guide (a template)
@@ -54,7 +62,7 @@ agent-workflow project --apple     # a Swift or SwiftUI app
 
 | Command | Adds |
 | --- | --- |
-| `project` | `docs/principles.md`, `CONTRIBUTING.md`, `scripts/hooks/commit-msg`, `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, the spec, decisions log and edge list templates in `docs/templates/`, a `.gitattributes` that merges `docs/decisions.md` with `union`, `.agents/skills/` for the project's own skills with a `.claude/skills` link to it, a root `AGENTS.md` that lists what to read, for any agent tool, and a root `CLAUDE.md` that imports `AGENTS.md` and the same files; it also sets `core.hooksPath` |
+| `project` | `docs/principles.md`, `CONTRIBUTING.md`, `scripts/hooks/` (`commit-msg`, `pre-commit`, `checks.sh` and `scrub.sh`; a kept copy that differs from `core/hooks/` is warned about), `scripts/ci-checks.sh` and `.github/workflows/checks.yml`, which run them on every commit of a pull request (`checks.yml` only once the hooks know CI), `.claude/settings.json` and `.claude/hooks/protected-edit.sh`, which ask before Claude edits a protected path (a kept `settings.json` gets the block to add), `.claude/agents/code-reviewer.md`, `.github/workflows/review.yml`, `.github/pull_request_template.md`, `.github/CODEOWNERS` unless the project has one (then it prints the lines to add), the spec, decisions log and edge list templates in `docs/templates/`, a `.gitattributes` that merges `docs/decisions.md` with `union`, `.agents/skills/` for the project's own skills with a `.claude/skills` link to it, a root `AGENTS.md` that lists what to read, for any agent tool, and a root `CLAUDE.md` that imports `AGENTS.md` and the same files; it also sets `core.hooksPath` |
 | `project --apple` | the same, plus `CODING.md` and `docs/code-smells.md`, the swift-lsp plugin and the three Swift skills |
 
 It never overwrites a file that's already there. With `--apple` it leaves out `docs/code-smells.md` when a `CLAUDE.md` in a folder above already has the same text, since Claude Code loads that one too. If the project has an `AGENTS.md` or `CLAUDE.md` of its own, it prints the files or import lines to add instead; if it has a `.claude/skills` folder, it prints the command that links it. A project set up before the principles were renamed has them as `docs/CLAUDE.md`, so when that file is there it doesn't add `docs/principles.md`; it prints the `git mv` to run and the lines to change.
@@ -84,7 +92,7 @@ Without the plugins, the principles and templates still work; drop the plugin se
 git config core.hooksPath scripts/hooks
 ```
 
-They refuse a commit whose changes or message contain a word from `.git/info/scrub-words`, one word or phrase per line. The list lives inside `.git`, so it's never committed, and the hooks refuse every commit until it exists. `scripts/test-hooks.sh` tests these hooks and `core/hooks/commit-msg`, and `scripts/test-install.sh` tests `install.sh`.
+They refuse a commit whose changes or message contain a word from `.git/info/scrub-words`, one word or phrase per line. The list lives inside `.git`, so it's never committed, and the hooks refuse every commit until it exists. `scripts/test-hooks.sh` tests these hooks and those in `core/hooks/`, and `scripts/test-install.sh` tests `install.sh`.
 
 ## Updating
 

@@ -145,6 +145,29 @@ copy() {
     mkdir -p "$(dirname "$2")" && cp "$repo/$1" "$2" && say "added $2" || fail "couldn't add $2"
 }
 
+# guard <from, in the clone> <to>: copy, and when a copy is kept, warn if it differs from the clone's, which may
+# check more by now. It's never replaced: a project may have its own. commit-msg's ALLOW_AI_CREDIT is the project's.
+guard() {
+    copy "$1" "$2"
+    [ "$(grep -v '^ALLOW_AI_CREDIT=' "$2")" = "$(grep -v '^ALLOW_AI_CREDIT=' "$repo/$1")" ] ||
+        skip "$2 differs from $repo/$1, which may check more by now; compare them with: diff $2 $repo/$1"
+}
+
+# ignore <path> <why> [committed]: appends /<path> to .gitignore, unless it's ignored already. With committed, only
+# a line of .gitignore itself counts, not a local rule (.git/info/exclude, global excludes) that CI never sees.
+ignore() {
+    # check-ignore fails outside a repository, so the line itself is looked for too.
+    grep -qxF "/$1" .gitignore 2>/dev/null && return
+    if [ "${3:-}" = committed ]; then
+        grep -qxE "/?${1%/}/?" .gitignore 2>/dev/null && return
+    else
+        git check-ignore -q --no-index "$1" 2>/dev/null && return
+    fi
+    # A last line without a newline would run into the new one.
+    [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
+    printf '/%s\n' "$1" >> .gitignore && say "added /$1 to .gitignore, $2" || fail "couldn't add /$1 to .gitignore"
+}
+
 # above <file in the clone>: prints the first CLAUDE.md in a folder above this one with the same text, if any.
 # Claude Code loads those too, so a copy here would load the same rules twice.
 above() {
@@ -168,8 +191,9 @@ project() {
     fi
     # The notes are private when docs/ is a repository of its own or git-ignored. Then AGENTS.md and CLAUDE.md, which
     # name files in docs/, stay out of the public repository too, and the union line goes in docs/ beside the log.
+    # --no-index, since a tracked file in docs/ would otherwise make it count as not ignored.
     private=0
-    { [ -e docs/.git ] || git check-ignore -q docs/ 2>/dev/null; } && private=1
+    { [ -e docs/.git ] || git check-ignore -q --no-index docs/ 2>/dev/null; } && private=1
 
     # Before the rename the principles were copied as docs/CLAUDE.md, often adapted past recognition, so any
     # docs/CLAUDE.md is taken for them: renamed by hand, never loaded twice.
@@ -181,7 +205,51 @@ project() {
         copy core/principles.md docs/principles.md
     fi
     copy core/CONTRIBUTING.md CONTRIBUTING.md
-    copy core/hooks/commit-msg scripts/hooks/commit-msg
+    grep -q '^- \*\*Types:\*\*' CONTRIBUTING.md 2>/dev/null ||
+        skip "CONTRIBUTING.md has no \"- **Types:**\" line, so scripts/hooks/commit-msg refuses every commit; add one that lists the types in backticks, as $repo/core/CONTRIBUTING.md does"
+    for f in commit-msg pre-commit checks.sh scrub.sh; do
+        guard "core/hooks/$f" "scripts/hooks/$f"
+    done
+    # CI runs the hooks again on every commit of a pull request, which kept hooks from before CI would fail.
+    guard core/checks/ci-checks.sh scripts/ci-checks.sh
+    older=""
+    for f in commit-msg pre-commit checks.sh; do
+        grep -q CHECK_COMMIT "scripts/hooks/$f" 2>/dev/null || older="$older $f"
+    done
+    if [ -z "$older" ]; then
+        guard core/github/checks.yml .github/workflows/checks.yml
+    else
+        skip ".github/workflows/checks.yml wasn't added: the kept scripts/hooks/{$(echo $older | tr ' ' ,)} are from before CI, so it would fail every pull request, and they miss newer checks such as the Protected: line. Replace them with $repo/core/hooks/'s (keep commit-msg's ALLOW_AI_CREDIT), then run agent-workflow project again"
+    fi
+    # The hooks protect the paths CODEOWNERS lists, read from the first place GitHub looks. Beside a project's own
+    # file a new one would win over it, so the template's missing lines are printed instead.
+    owners=""
+    for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+        [ "$f" = docs/CODEOWNERS ] && [ "$private" = 1 ] && continue
+        [ -e "$f" ] && owners="$f" && break
+    done
+    if [ -z "$owners" ]; then
+        copy core/github/CODEOWNERS .github/CODEOWNERS
+    else
+        # The template protects itself as /.github/CODEOWNERS; here the file to protect is the project's own.
+        lines="$(awk -v own="/$owners" 'NR == FNR { have[$1]; next }
+            $1 == "/.github/CODEOWNERS" { $1 = own }
+            NF && $1 !~ /^#/ && !($1 in have)' "$owners" "$repo/core/github/CODEOWNERS")"
+        if [ -n "$lines" ]; then
+            skip "$owners is already there; add these lines to it, so the hooks protect the guards:"
+            printf '%s\n' "$lines" | sed 's/^/  /' >&2
+        fi
+        awk '$1 == "*" { found = 1 } END { exit !found }' "$owners" &&
+            skip "$owners has a catch-all * line, so the hooks ask every commit for a \"Protected: <why>\" line"
+    fi
+    # Claude asks before it edits a path CODEOWNERS lists. A settings.json of the project's own is never merged into.
+    guard core/claude/protected-edit.sh .claude/hooks/protected-edit.sh
+    if [ ! -e .claude/settings.json ]; then
+        copy core/claude/settings.json .claude/settings.json
+    elif ! grep -q 'protected-edit\.sh' .claude/settings.json; then
+        skip ".claude/settings.json is already there; add this hook to it, so Claude asks before it edits a path CODEOWNERS lists:"
+        sed 's/^/  /' "$repo/core/claude/settings.json" >&2
+    fi
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
     copy core/github/review.yml .github/workflows/review.yml
     copy core/github/pull_request_template.md .github/pull_request_template.md
@@ -226,18 +294,13 @@ project() {
     # private files to add to them.
     if [ "$private" = 1 ]; then
         for f in AGENTS.md CLAUDE.md; do
-            # check-ignore fails outside a repository, so the line itself is looked for too.
-            if ! grep -qxF "/$f" .gitignore 2>/dev/null && ! git check-ignore -q --no-index "$f" 2>/dev/null; then
-                # A last line without a newline would run into the new one.
-                [ -s .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && echo >> .gitignore
-                printf '/%s\n' "$f" >> .gitignore && say "added /$f to .gitignore, since it names the private notes" ||
-                    fail "couldn't add /$f to .gitignore"
-            fi
+            ignore "$f" "since it names the private notes"
             git ls-files --error-unmatch "$f" >/dev/null 2>&1 &&
                 skip "$f is tracked, but where the notes are private it mustn't be; untrack it first with: git rm --cached $f"
         done
-        [ -e docs/.git ] && ! git check-ignore -q docs/ 2>/dev/null &&
-            skip "docs/ is a repository of its own; add /docs/ to .gitignore, or git records it here as an embedded repository"
+        # So CI and a linked worktree, which see only the committed .gitignore (a worktree has no docs/), still
+        # find the notes private.
+        ignore docs/ "so CI and linked worktrees, which read only .gitignore, find the notes private" committed
         grep -qxF "docs/decisions.md merge=union" .gitattributes 2>/dev/null &&
             skip "the root .gitattributes still merges the decisions log, which is in the private notes now; remove its line docs/decisions.md merge=union"
     fi
@@ -283,8 +346,11 @@ project() {
         if [ -z "$hooks" ]; then
             git config core.hooksPath scripts/hooks && say "set core.hooksPath to scripts/hooks" || fail "couldn't set core.hooksPath"
         elif [ "$hooks" != scripts/hooks ]; then
-            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg there to use it"
+            skip "core.hooksPath is already $hooks, so it was kept; move scripts/hooks/commit-msg, pre-commit, checks.sh and scrub.sh there to use them"
         fi
+        list="$(git rev-parse --git-path info/scrub-words)"
+        grep -q '[^[:space:]]' "$list" 2>/dev/null ||
+            skip "the hooks refuse every commit until $list lists the words to keep out of the repository, one per line, such as real names; it stays in .git, so it's never committed"
     fi
 
     [ "$apple" = 1 ] && plugins \

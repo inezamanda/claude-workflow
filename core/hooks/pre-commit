@@ -1,0 +1,43 @@
+#!/bin/sh
+# Checks the staged changes: no commit on main; where the notes are private (docs/ ignored, or a repository of
+# its own), no notes files and no added line that names a path into them; no word from the scrub list; and a
+# warning when the commit changes more than 200 lines outside tests.
+# Copy it, checks.sh and scrub.sh into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
+# In CI, scripts/ci-checks.sh runs it on each commit with CHECK_COMMIT set (see checks.sh); main isn't checked there.
+. "$(dirname "$0")/checks.sh"
+
+# A detached HEAD (a rebase) and an unborn main (the first commit) pass.
+if [ -z "$CHECK_COMMIT" ] && [ "$(git symbolic-ref -q --short HEAD)" = main ] && git rev-parse -q --verify HEAD >/dev/null; then
+    refuse "this is main; commit on a branch and open a pull request"
+fi
+
+if notes_private; then
+    paths="$(staged_paths | private_paths | tr '\n' ' ')"
+    [ -n "$paths" ] && refuse "the notes are private here (docs/ is ignored or a repository of its own); unstage: $paths"
+    # .gitignore names the notes to ignore them, and the hooks name them to check them.
+    links="$(added_lines ':(exclude).gitignore' ':(exclude)scripts/hooks/' | notes_links)"
+    [ -n "$links" ] && refuse "the notes are private here, so no line may point into docs/:
+$links"
+fi
+
+{ staged_paths; added_lines; } | scrub "the staged changes" || fail=1
+
+# The lines added and removed outside tests. Renames are followed, so a move counts only what it changes;
+# binary files show "-" and count nothing. With -z, a rename's two paths follow on lines of their own.
+if ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+    size="$(changes -M --numstat -z | tr '\0' '\n' | awk -F '\t' '
+        function count(path,   n, i, part) {
+            n = split(path, part, "/")
+            for (i = 1; i < n; i++) if (part[i] ~ /^(test|tests|Tests|__tests__)$/) return
+            if (part[n] !~ /test|Test/) total += added + removed
+        }
+        renamed == 2 { renamed = 1; next }
+        renamed == 1 { renamed = 0; count($0); next }
+        { added = $1; removed = $2 }
+        $3 == "" { renamed = 2; next }
+        { count($3) }
+        END { print total + 0 }')"
+    [ "$size" -gt 200 ] &&
+        echo "pre-commit: $size lines changed outside tests; past 200, think about splitting the commit" >&2
+fi
+exit $fail
