@@ -61,7 +61,7 @@ PATH="$fakes:$HOME/.local/bin:$base" "$src/install.sh" > "$work/out" 2>&1
 check "first run succeeds" [ $? -eq 0 ]
 check "CLAUDE.md links to the clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$src/core/CLAUDE.md" ]
 check "the old CLAUDE.md is kept as a backup" sh -c "cat '$HOME'/.claude/CLAUDE.md.backup.* | grep -qx old"
-check "claude-workflow links to install.sh" [ "$(readlink "$HOME/.local/bin/claude-workflow")" = "$src/install.sh" ]
+check "agent-workflow links to install.sh" [ "$(readlink "$HOME/.local/bin/agent-workflow")" = "$src/install.sh" ]
 for p in caveman@caveman ponytail@ponytail superpowers@claude-plugins-official; do
     check "installs $p" [ "$(count "plugin install $p")" -eq 1 ]
 done
@@ -69,25 +69,46 @@ check "adds the two missing marketplaces" [ "$(count "plugin marketplace add")" 
 check "doesn't add the official marketplace again" [ "$(count "marketplace add anthropics")" -eq 0 ]
 check "installs graphify and its skill" [ -d "$HOME/.claude/skills/graphify" ]
 
-# Again, through the claude-workflow link: nothing new happens
+# Again, through the agent-workflow link: nothing new happens
 calls="$(wc -l < "$STATE/log")"
-PATH="$fakes:$HOME/.local/bin:$base" claude-workflow > "$work/out" 2>&1
+PATH="$fakes:$HOME/.local/bin:$base" agent-workflow > "$work/out" 2>&1
 check "second run through the link succeeds" [ $? -eq 0 ]
 check "second run installs nothing" [ "$(count "plugin install")" -eq 3 ]
 check "second run calls only the two lists" [ "$(wc -l < "$STATE/log")" -eq $((calls + 2)) ]
 check "second run makes no new backup" [ "$(ls "$HOME/.claude" | grep -c backup)" -eq 1 ]
-check "the link doesn't make a second clone" [ ! -e "$HOME/.claude-workflow" ]
+check "the link doesn't make a second clone" [ ! -e "$HOME/.agent-workflow" ]
 
 # Piped in, as from curl: it clones, and later updates the clone
 fresh two && cd "$work" || exit 1
-CLAUDE_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" sh < "$src/install.sh" > "$work/out" 2>&1
+AGENT_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" sh < "$src/install.sh" > "$work/out" 2>&1
 check "piped run succeeds" [ $? -eq 0 ]
-check "piped run clones to ~/.claude-workflow" [ -f "$HOME/.claude-workflow/core/CLAUDE.md" ]
-check "piped run links CLAUDE.md into that clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.claude-workflow/core/CLAUDE.md" ]
+check "piped run clones to ~/.agent-workflow" [ -f "$HOME/.agent-workflow/core/CLAUDE.md" ]
+check "piped run links CLAUDE.md into that clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.agent-workflow/core/CLAUDE.md" ]
 check "piped run warns that ~/.local/bin isn't on the PATH" grep -q "add ~/.local/bin to your PATH" "$work/out"
 echo new > "$src/new-file" && git -C "$src" add new-file && git -C "$src" -c user.name=t -c user.email=t@t commit -qm new
-PATH="$fakes:$base" "$HOME/.local/bin/claude-workflow" > "$work/out" 2>&1
-check "a later run pulls the clone" [ -f "$HOME/.claude-workflow/new-file" ]
+PATH="$fakes:$base" "$HOME/.local/bin/agent-workflow" > "$work/out" 2>&1
+check "a later run pulls the clone" [ -f "$HOME/.agent-workflow/new-file" ]
+
+# A clone from before the rename, at ~/.claude-workflow, run through its old command: it moves to ~/.agent-workflow
+fresh six && git clone -q "$src" "$HOME/.claude-workflow" && mkdir -p "$HOME/.claude" "$HOME/.local/bin" || exit 1
+ln -s "$HOME/.claude-workflow/core/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+ln -s "$HOME/.claude-workflow/install.sh" "$HOME/.local/bin/claude-workflow"
+AGENT_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" "$HOME/.local/bin/claude-workflow" > "$work/out" 2>&1
+check "an old clone's run succeeds" [ $? -eq 0 ]
+check "the old clone moves to ~/.agent-workflow" [ -f "$HOME/.agent-workflow/core/CLAUDE.md" ]
+check "the old clone is gone from ~/.claude-workflow" [ ! -e "$HOME/.claude-workflow" ]
+check "it says it moved the clone" grep -q "moved $HOME/.claude-workflow to" "$work/out"
+check "CLAUDE.md links into the moved clone" [ "$(readlink "$HOME/.claude/CLAUDE.md")" = "$HOME/.agent-workflow/core/CLAUDE.md" ]
+check "agent-workflow links into the moved clone" [ "$(readlink "$HOME/.local/bin/agent-workflow")" = "$HOME/.agent-workflow/install.sh" ]
+check "the old claude-workflow command is gone" [ ! -L "$HOME/.local/bin/claude-workflow" ]
+
+# Both clones there: nothing is moved, and it says so
+fresh seven && git clone -q "$src" "$HOME/.claude-workflow" && git clone -q "$src" "$HOME/.agent-workflow" || exit 1
+AGENT_WORKFLOW_REPO_URL="$src" PATH="$fakes:$base" "$HOME/.claude-workflow/install.sh" > "$work/out" 2>&1
+check "with both clones, the run succeeds" [ $? -eq 0 ]
+check "with both clones, the old one stays" [ -d "$HOME/.claude-workflow/.git" ]
+check "with both clones, the new one stays" [ -d "$HOME/.agent-workflow/.git" ]
+check "with both clones, it says it left the old one" grep -q "left $HOME/.claude-workflow as it is" "$work/out"
 
 # Without Claude Code or uv: the links are still made, and it says what it skipped
 fresh three
@@ -126,7 +147,8 @@ check "a second project run says it kept it" grep -q "kept docs/CLAUDE.md" "$wor
 mkdir -p "$work/p2" && cd "$work/p2" && git init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
 check "project --apple succeeds" [ $? -eq 0 ]
-check "project --apple adds CODING.md and the code smells" [ -f CODING.md ] && [ -f docs/code-smells.md ]
+check "project --apple adds CODING.md" [ -f CODING.md ]
+check "project --apple adds the code smells" [ -f docs/code-smells.md ]
 check "project --apple's CLAUDE.md imports all four" \
     [ "$(cat CLAUDE.md)" = "$(printf '@CONTRIBUTING.md\n@CODING.md\n@docs/CLAUDE.md\n@docs/code-smells.md')" ]
 check "project --apple installs swift-lsp once" [ "$(count "plugin install swift-lsp@claude-plugins-official")" -eq 1 ]
@@ -156,7 +178,8 @@ check "it lists the imports to add" grep -q "@docs/CLAUDE.md" "$work/out"
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
-check "a folder without git still gets the templates" [ $? -eq 0 ] && [ -f docs/CLAUDE.md ]
+check "a folder without git still succeeds" [ $? -eq 0 ]
+check "a folder without git still gets the templates" [ -f docs/CLAUDE.md ]
 check "it says to set core.hooksPath after git init" grep -q "after git init" "$work/out"
 mkdir -p "$work/p5" && cd "$work/p5" && git init -q && git config core.hooksPath .githooks || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
