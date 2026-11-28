@@ -195,6 +195,17 @@ check "project --apple's AGENTS.md lists all four to read" \
     [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md\ndocs/code-smells.md')" ]
 check "project --apple's CLAUDE.md imports AGENTS.md and all four" \
     [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/principles.md\n@docs/code-smells.md')" ]
+# Axiom's Instruments skills: frontmatter written here, Axiom's MIT notice and where each came from beside it.
+for s in performance-profiling memory-debugging swiftui-performance; do
+    d="$src/apple/skills/$s"
+    check "the apple skill $s has name, description, LICENSE and SOURCE.md" sh -c "
+        [ \"\$(sed -n 1p '$d/SKILL.md')\" = --- ] && grep -qx 'name: $s' '$d/SKILL.md' &&
+        grep -q '^description: ..' '$d/SKILL.md' && grep -q 'Copyright (c) 2025 Charles Wiltgen' '$d/LICENSE' &&
+        grep -q ffafd3b '$d/SOURCE.md'"
+    check "project --apple adds the skill $s with its LICENSE and SOURCE.md" sh -c "
+        cmp -s .agents/skills/$s/SKILL.md '$d/SKILL.md' && cmp -s .agents/skills/$s/LICENSE '$d/LICENSE' &&
+        cmp -s .agents/skills/$s/SOURCE.md '$d/SOURCE.md'"
+done
 check "project --apple installs swift-lsp once" [ "$(count "plugin install swift-lsp@claude-plugins-official")" -eq 1 ]
 for p in swift-concurrency-pro@swift-concurrency-agent-skill swiftui-pro@swiftui-agent-skill \
     swift-testing-pro@swift-testing-agent-skill; do

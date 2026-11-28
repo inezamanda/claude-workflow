@@ -286,6 +286,10 @@ project() {
         copy apple/swift-format.json .swift-format
         copy apple/swiftlint.yml .swiftlint.yml
         copy apple/github/checks-swift.yml .github/workflows/checks-swift.yml
+        # Axiom's Instruments skills; MIT wants its notice with every copy, so LICENSE goes too.
+        for s in performance-profiling memory-debugging swiftui-performance; do
+            for f in SKILL.md LICENSE SOURCE.md; do copy "apple/skills/$s/$f" ".agents/skills/$s/$f"; done
+        done
         grep -q '^  PACKAGES: ""' .github/workflows/checks-swift.yml 2>/dev/null &&
             say "to test Swift packages on Linux in CI, list them in PACKAGES in .github/workflows/checks-swift.yml"
         guard apple/hooks/pre-commit-swift scripts/hooks/pre-commit-swift
