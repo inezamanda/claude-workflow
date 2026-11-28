@@ -13,11 +13,11 @@ set --
 while IFS= read -r f; do set -- "$@" ":(literal)$f"; done <<EOF
 $swift
 EOF
-partly="$(git diff --name-only -- "$@")"
+partly="$(git diff-files --name-only -- "$@")"
 [ -n "$partly" ] && refuse "only part of these is staged, and the tools would lint the rest too; stage all of each, or stash the rest:
 $partly"
 set -- ':(glob)**/.swiftlint.yml' ':(glob)**/.swift-format'
-configs="$(git diff --name-only -- "$@"; git ls-files --others --exclude-standard -- "$@")"
+configs="$(git diff-files --name-only -- "$@"; git ls-files --others --exclude-standard -- "$@")"
 [ -n "$configs" ] && refuse "these lint configs have changes that aren't staged, and the tools would read them; stage or stash them:
 $configs"
 [ "$fail" = 0 ] || exit 1

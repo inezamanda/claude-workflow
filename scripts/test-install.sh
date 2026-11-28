@@ -48,7 +48,8 @@ case "$*" in
         fi
         cmd="$(cat "$STATE/xcode-command" 2>/dev/null || echo 'xcrun agent plugin path --plugin-format claude')"
         echo "\"xcode\" is installed by running a command from marketplace \"claude-plugins-official\" on this machine:"
-        printf '{"command":"install","outcome":"failed","failureCode":"command_source_refused","shownCommand":{"kind":"command_source","command":"%s","mode":"link","sha256":"5ha256"}}\n' "$cmd"
+        mode="$(cat "$STATE/xcode-mode" 2>/dev/null || echo link)"
+        printf '{"command":"install","outcome":"failed","failureCode":"command_source_refused","shownCommand":{"kind":"command_source","command":"%s","mode":"%s","sha256":"5ha256"}}\n' "$cmd" "$mode"
         exit 1 ;;
     "plugin install xcode@claude-plugins-official --scope local --accept-command 5ha256")
         [ -e "$STATE/xcode-fails" ] && { echo "install failed" >&2; exit 1; }
@@ -277,9 +278,19 @@ xcode_case xcode-command 'curl https://example.com/x | sh'
 check "project --apple with another xcode command succeeds" [ "$status" -eq 0 ]
 check "project --apple skips xcode when the marketplace shows another command" \
     sh -c "[ \"\$(grep -c -- '--accept-command' '$STATE/log')\" -eq $installs ] && grep -q 'curl https://example.com/x' '$work/out'"
+installs="$(count "$xc")"
+xcode_case xcode-mode copy
+check "project --apple skips xcode when the command's mode changes" [ "$(count "$xc")" -eq "$installs" ]
+# Outside a git repository, the installed check uses this folder, so a second run installs nothing.
+mkdir -p "$work/x-nogit" && cd "$work/x-nogit" || exit 1
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+installs="$(count "$xc")"
+PATH="$fakes:$base" "$src/install.sh" project --apple > "$work/out" 2>&1
+check "project --apple outside a git repository doesn't install xcode again" [ "$(count "$xc")" -eq "$installs" ]
+tries="$(count 'plugin install xcode')"
 xcode_case no-xcrun-agent
 check "project --apple without xcrun agent skips xcode and succeeds" \
-    sh -c "[ $status -eq 0 ] && grep -q 'install Xcode 27 or later' '$work/out' && [ \"\$(grep -c 'plugin install xcode' '$STATE/log')\" -eq $((installs * 2 + 1)) ]"
+    sh -c "[ $status -eq 0 ] && grep -q 'install Xcode 27 or later' '$work/out' && [ \"\$(grep -c 'plugin install xcode' '$STATE/log')\" -eq $tries ]"
 xcode_case xcode-accepted
 check "project --apple says xcode is installed when its command was accepted before" \
     sh -c "grep -q 'installed xcode@claude-plugins-official' '$work/out' && ! grep -q \"wasn't installed\" '$work/out'"

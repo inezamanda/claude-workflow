@@ -425,8 +425,8 @@ if PATH="$tools" command -v swiftlint >/dev/null; then
     print("x")
 }'
     expect -m '(no_print)' refuse "swiftlint.yml: print in app code refused" lint "$sl" Sources/App/Log.swift
-    cp "$sl/Sources/App/Log.swift" "$sl/Sources/App/LogTests.swift" && mkdir -p "$sl/Tests/AppTests" &&
-        cp "$sl/Sources/App/Log.swift" "$sl/Tests/AppTests/Log.swift" && sed -i '' 's/Log\.swift/LogTests.swift/' "$sl/Sources/App/LogTests.swift"
+    swift_file "$sl/Sources/App/LogTests.swift" "$(sed -n '8,$p' "$sl/Sources/App/Log.swift")"
+    swift_file "$sl/Tests/AppTests/Log.swift" "$(sed -n '8,$p' "$sl/Sources/App/Log.swift")"
     expect pass "swiftlint.yml: print in Tests/ and in a FooTests.swift passes" \
         lint "$sl" Tests/AppTests/Log.swift Sources/App/LogTests.swift
     ft="$work/FooTests/sl" && swift_repo "$ft" && cp "$sl/Sources/App/Log.swift" "$ft/Log.swift"

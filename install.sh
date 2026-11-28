@@ -3,7 +3,8 @@
 #
 #   install.sh                    the clone, ~/.claude/CLAUDE.md and AGENTS.md, the plugins and graphify
 #   install.sh project            the same, then the templates into the current folder
-#   install.sh project --apple    also the Apple coding guide and code smells, swift-lsp and the Swift skills
+#   install.sh project --apple    also the Apple coding guide and code smells, the Swift lint configs, hook and CI,
+#                                  swift-lsp, the Swift skills, three Instruments skills and the Xcode plugin
 #
 # After the first run it's on the PATH as agent-workflow.
 # Without a clone: curl -fsSL https://raw.githubusercontent.com/inezamanda/agent-workflow/main/install.sh | sh
@@ -19,7 +20,7 @@ fail() {
 }
 
 usage() {
-    sed -n '3,7p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+    sed -n '3,8p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
 }
 
 # The clone this script runs from (through the agent-workflow link too), or ~/.agent-workflow when it was
@@ -104,8 +105,10 @@ xcode_plugin() {
         skip "Apple's Xcode plugin was skipped: install Xcode 27 or later, then run agent-workflow project --apple again"
         return
     fi
-    # Claude Code keys a local install by the main worktree's physical path, so linked worktrees share it.
-    root="$(cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd -P)" || root="$(pwd -P)"
+    # Claude Code keys a local install by the main worktree's physical path, so linked worktrees share it; outside
+    # a repository, by this folder.
+    root="$(git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')"
+    root="$(cd "${root:-.}" && pwd -P)"
     # Python, from Xcode, is there once xcrun agent is; JSON in sh is guesswork.
     claude plugin list --json 2>/dev/null | python3 -I -c '
 import json, sys
@@ -114,14 +117,15 @@ sys.exit(not any(p.get("id") == "xcode@claude-plugins-official" and p.get("scope
     expected="xcrun agent plugin path --plugin-format claude"
     shown="$(claude plugin install xcode@claude-plugins-official --scope local --json </dev/null 2>/dev/null | tail -n 1)"
     # "ok" when it installed already, since Claude Code remembers a command a person accepted; "failed" when it
-    # failed with no command shown; empty when the command shown isn't the expected one.
+    # failed with no command or sha shown; empty when the command shown, or how it's run, isn't the expected one.
     sha="$(printf '%s' "$shown" | python3 -I -c '
 import json, sys
 d = json.load(sys.stdin)
 c = d.get("shownCommand")
 if d.get("outcome") == "ok": print("ok")
-elif not c: print("failed")
-elif c.get("command") == sys.argv[1]: print(c.get("sha256", ""))' "$expected" 2>/dev/null || echo failed)"
+elif not c or not c.get("sha256"): print("failed")
+elif (c.get("kind"), c.get("command"), c.get("mode")) == ("command_source", sys.argv[1], "link"): print(c["sha256"])' \
+        "$expected" 2>/dev/null || echo failed)"
     xcode_added="installed xcode@claude-plugins-official for this project; Xcode asks you to approve each agent the first time it opens or creates a project through Xcode's tools"
     not_installed="couldn't install Apple's Xcode plugin; to see why, run: claude plugin install xcode@claude-plugins-official --scope local"
     case "$sha" in
