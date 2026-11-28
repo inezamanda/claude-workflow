@@ -114,7 +114,7 @@ Sizes count non-test lines added and removed. Five branches, each a pull request
 6. `feat: give projects an AGENTS.md that CLAUDE.md imports`: both templates; `install.sh` writes them and keeps its never-overwrite rule. ~100, M.
 7. `feat: put the skills in .agents/skills with a .claude/skills link`: for skills a project keeps itself, such as the Axiom copies. ~40, S. Hudson's skills stay plugins (decisions, 28 Nov).
 8. `docs: one skill per step in the Claude adapter`: the table (decisions, 28 Nov), replacing the duplicates; that `skillOverrides` doesn't reach plugin skills; and that a session doing light work asks the maintainer to switch to Sonnet 5.5. ~70, S.
-9. `docs: make the principles tool-neutral and the notes a choice per project`: line 3, principle 2 (public or private notes), principle 8 (parallel sessions and worktrees), lines 91, 113 and 117. ~60, S. **Open:** whether a project's copy of the principles is renamed from `docs/CLAUDE.md`, which every tool's `AGENTS.md` now lists, to a tool-neutral name; existing projects' imports would need the new name.
+9. `docs: make the principles tool-neutral and the notes a choice per project`: line 3, principle 2 (public or private notes), principle 8 (parallel sessions and worktrees), lines 91, 113 and 117. ~60, S. The project's copy is renamed from `docs/CLAUDE.md` to `docs/principles.md`; an old copy isn't copied again, and `install.sh` prints the `git mv` and the lines to change (decisions, 28 Nov).
 10. `docs: let the reviewer read the spec first and the Swift skills`: `code-reviewer.md` reads `AGENTS.md` and the plan, checks the spec's citations and mutations, and has a round-2 mode that reads only its findings and the plan's diff. ~40, S.
 
 **Branch 3, `feat/guardrails`**
@@ -160,5 +160,6 @@ The question: does a test writer that works from the spec, before the code exist
 | 5 | `refactor: split the global instructions into AGENTS.md and a Claude adapter` | c40c180 | OK as proposed; `install.sh` run after it to relink `~/.claude` |
 | 6 | `feat: give projects an AGENTS.md that CLAUDE.md imports` | e2ad482 | OK as proposed |
 | 7 | `feat: put the skills in .agents/skills with a .claude/skills link` | 631b11c | OK as proposed; Claude Code's discovery through the link checked with `claude -p` |
+| 8 | `docs: one skill per step in the Claude adapter` | d1c5168 | OK as proposed; the table, lost from chat, rebuilt and approved |
 
-Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 8, which also commits the notes changed since commit 7. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).
+Branch 1 pushed as pull request #1, without a branch review (light level; maintainer, 28 Nov). Branch 2 starts on top of it, at light level: per the decisions of 28 Nov, its implementing session runs on Sonnet 5.5, high effort, started fresh. Next: commit 9, which also commits the notes changed since commit 8. Still open: decisions 2 to 5 and 9 (branch 3), 10 and 11, 12 (branch 5), and 17a's Axiom accessibility copy (branch 4).

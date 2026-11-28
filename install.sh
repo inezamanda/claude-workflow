@@ -166,7 +166,15 @@ project() {
         fail "the templates go at the repository's root; run agent-workflow project in $top"
         return
     fi
-    copy core/principles.md docs/CLAUDE.md
+    # Before the rename the principles were copied as docs/CLAUDE.md, often adapted past recognition, so any
+    # docs/CLAUDE.md is taken for them: renamed by hand, never loaded twice.
+    old_principles=0
+    if [ ! -e docs/principles.md ] && [ -e docs/CLAUDE.md ]; then
+        old_principles=1
+        skip "docs/CLAUDE.md is already there, so the principles weren't added. If it holds them, run git mv docs/CLAUDE.md docs/principles.md, then change docs/CLAUDE.md to docs/principles.md wherever AGENTS.md or CLAUDE.md names it. If it doesn't, copy $repo/core/principles.md to docs/principles.md"
+    else
+        copy core/principles.md docs/principles.md
+    fi
     copy core/CONTRIBUTING.md CONTRIBUTING.md
     copy core/hooks/commit-msg scripts/hooks/commit-msg
     copy core/agents/code-reviewer.md .claude/agents/code-reviewer.md
@@ -196,10 +204,10 @@ project() {
         printf '  %s\n' "$union" >&2
     fi
 
-    reads="CONTRIBUTING.md docs/CLAUDE.md"
+    reads="CONTRIBUTING.md docs/principles.md"
     if [ "$apple" = 1 ]; then
         copy apple/CODING.md CODING.md
-        reads="CONTRIBUTING.md CODING.md docs/CLAUDE.md"
+        reads="CONTRIBUTING.md CODING.md docs/principles.md"
         if smells="$(above apple/CLAUDE.md)"; then
             skip "$smells already has the code smells and is loaded here, so docs/code-smells.md wasn't added"
         else
@@ -218,6 +226,8 @@ project() {
     else
         missing=""
         for f in $reads; do
+            # The rename above gives this one.
+            [ "$old_principles" = 1 ] && [ "$f" = docs/principles.md ] && continue
             grep -qF "$f" AGENTS.md || missing="$missing $f"
         done
         if [ -n "$missing" ]; then
@@ -231,6 +241,7 @@ project() {
     else
         missing=""
         for line in @AGENTS.md $(printf '@%s ' $reads); do
+            [ "$old_principles" = 1 ] && [ "$line" = @docs/principles.md ] && continue
             grep -qxF "$line" CLAUDE.md || missing="$missing $line"
         done
         if [ -n "$missing" ]; then

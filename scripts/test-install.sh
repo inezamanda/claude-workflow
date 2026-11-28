@@ -142,7 +142,7 @@ check "an unknown argument changes nothing" [ ! -e "$HOME/.claude" ]
 fresh five && mkdir -p "$work/p1" && cd "$work/p1" && git init -q || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "project succeeds" [ $? -eq 0 ]
-for f in AGENTS.md docs/CLAUDE.md CONTRIBUTING.md scripts/hooks/commit-msg .claude/agents/code-reviewer.md \
+for f in AGENTS.md docs/principles.md CONTRIBUTING.md scripts/hooks/commit-msg .claude/agents/code-reviewer.md \
     .github/workflows/review.yml .github/pull_request_template.md \
     docs/templates/spec.md docs/templates/decisions.md docs/templates/edge-list.md .agents/skills/README.md; do
     check "project adds $f" [ -f "$f" ]
@@ -151,19 +151,19 @@ check "project links .claude/skills to .agents/skills" [ "$(readlink .claude/ski
 check "the .claude/skills link resolves" [ -f .claude/skills/README.md ]
 check "project's .gitattributes merges the decisions log with union" grep -qxF "docs/decisions.md merge=union" .gitattributes
 check "project adds no decisions log of its own" [ ! -e docs/decisions.md ]
-check "project's AGENTS.md lists CONTRIBUTING.md and docs/CLAUDE.md to read" \
-    [ "$(reads)" = "$(printf 'CONTRIBUTING.md\ndocs/CLAUDE.md')" ]
+check "project's AGENTS.md lists CONTRIBUTING.md and docs/principles.md to read" \
+    [ "$(reads)" = "$(printf 'CONTRIBUTING.md\ndocs/principles.md')" ]
 check "project's AGENTS.md has no marker left" sh -c "! grep -q 'files to read' AGENTS.md"
-check "project's CLAUDE.md imports AGENTS.md, then CONTRIBUTING.md and docs/CLAUDE.md" \
-    [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@docs/CLAUDE.md')" ]
+check "project's CLAUDE.md imports AGENTS.md, then CONTRIBUTING.md and docs/principles.md" \
+    [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@docs/principles.md')" ]
 check "project's commit-msg hook is executable" [ -x scripts/hooks/commit-msg ]
 check "project sets core.hooksPath" [ "$(git config core.hooksPath)" = scripts/hooks ]
 check "project without --apple adds no CODING.md" [ ! -e CODING.md ]
 check "project without --apple installs no swift-lsp" [ "$(count swift-lsp)" -eq 0 ]
-echo mine > docs/CLAUDE.md
+echo mine > docs/principles.md
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
-check "a second project run keeps an edited template" [ "$(cat docs/CLAUDE.md)" = mine ]
-check "a second project run says it kept it" grep -q "kept docs/CLAUDE.md" "$work/out"
+check "a second project run keeps an edited template" [ "$(cat docs/principles.md)" = mine ]
+check "a second project run says it kept it" grep -q "kept docs/principles.md" "$work/out"
 check "a second project run keeps the skills link" [ "$(readlink .claude/skills)" = ../.agents/skills ]
 check "a second project run says nothing about the skills link" sh -c "! grep -q 'claude/skills' '$work/out'"
 
@@ -174,9 +174,9 @@ check "project --apple succeeds" [ $? -eq 0 ]
 check "project --apple adds CODING.md" [ -f CODING.md ]
 check "project --apple adds the code smells" [ -f docs/code-smells.md ]
 check "project --apple's AGENTS.md lists all four to read" \
-    [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/CLAUDE.md\ndocs/code-smells.md')" ]
+    [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md\ndocs/code-smells.md')" ]
 check "project --apple's CLAUDE.md imports AGENTS.md and all four" \
-    [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/CLAUDE.md\n@docs/code-smells.md')" ]
+    [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/principles.md\n@docs/code-smells.md')" ]
 check "project --apple installs swift-lsp once" [ "$(count "plugin install swift-lsp@claude-plugins-official")" -eq 1 ]
 for p in swift-concurrency-pro@swift-concurrency-agent-skill swiftui-pro@swiftui-agent-skill \
     swift-testing-pro@swift-testing-agent-skill; do
@@ -193,9 +193,9 @@ check "project --apple under the code smells succeeds" [ $? -eq 0 ]
 check "project --apple under the code smells doesn't copy them" [ ! -e docs/code-smells.md ]
 check "project --apple under the code smells says where they are" grep -q "$work/apps/CLAUDE.md" "$work/out"
 check "project --apple under the code smells imports AGENTS.md and three" \
-    [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/CLAUDE.md')" ]
+    [ "$(imports)" = "$(printf '@AGENTS.md\n@CONTRIBUTING.md\n@CODING.md\n@docs/principles.md')" ]
 check "project --apple under the code smells lists three to read" \
-    [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/CLAUDE.md')" ]
+    [ "$(reads)" = "$(printf 'CONTRIBUTING.md\nCODING.md\ndocs/principles.md')" ]
 
 # A CLAUDE.md of the project's own is never rewritten; it says what to add
 mkdir -p "$work/p3" && cd "$work/p3" && git init -q && echo "# our rules" > CLAUDE.md || exit 1
@@ -203,7 +203,7 @@ echo "*.png binary" > .gitattributes
 mkdir -p .claude/skills/ours
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "an existing CLAUDE.md is left as it was" [ "$(cat CLAUDE.md)" = "# our rules" ]
-check "it lists the imports to add" grep -q "@docs/CLAUDE.md" "$work/out"
+check "it lists the imports to add" grep -q "@docs/principles.md" "$work/out"
 check "it lists AGENTS.md among the imports to add" grep -qx "  @AGENTS.md" "$work/out"
 check "an existing .gitattributes is left as it was" [ "$(cat .gitattributes)" = "*.png binary" ]
 check "it gives the union line to add" grep -qF "  docs/decisions.md merge=union" "$work/out"
@@ -217,15 +217,31 @@ check "with the union line there, it doesn't ask for it" sh -c "! grep -q 'merge
 mkdir -p "$work/p6" && cd "$work/p6" && git init -q && printf '# ours\n\nRead `CONTRIBUTING.md` first.\n' > AGENTS.md || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "an existing AGENTS.md is left as it was" [ "$(cat AGENTS.md)" = "$(printf '# ours\n\nRead `CONTRIBUTING.md` first.')" ]
-check "it lists the file AGENTS.md doesn't name" grep -qx "  docs/CLAUDE.md" "$work/out"
+check "it lists the file AGENTS.md doesn't name" grep -qx "  docs/principles.md" "$work/out"
 check "it doesn't list the file AGENTS.md names" sh -c "! grep -qx '  CONTRIBUTING.md' '$work/out'"
 check "a project with its own AGENTS.md still gets a CLAUDE.md that imports it" [ "$(head -1 CLAUDE.md)" = @AGENTS.md ]
+
+# A project set up before the rename has the principles as docs/CLAUDE.md: it says how to rename them, and doesn't copy them twice
+mkdir -p "$work/p7/docs" && cd "$work/p7" && git init -q && cp "$src/core/principles.md" docs/CLAUDE.md || exit 1
+printf '@CONTRIBUTING.md\n@docs/CLAUDE.md\n' > CLAUDE.md
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "an old docs/CLAUDE.md with the principles is left as it was" cmp -s docs/CLAUDE.md "$src/core/principles.md"
+check "the principles aren't copied a second time" [ ! -e docs/principles.md ]
+check "it says how to rename the old copy" grep -qF "git mv docs/CLAUDE.md docs/principles.md" "$work/out"
+check "it doesn't also ask for an import the rename gives" sh -c "! grep -qx '  @docs/principles.md' '$work/out'"
+check "it says how to get the principles if the old file isn't them" grep -qF "copy $src/core/principles.md to docs/principles.md" "$work/out"
+# A docs/CLAUDE.md with its own first line may still be an adapted copy, so the principles aren't added beside it either
+mkdir -p "$work/p8/docs" && cd "$work/p8" && git init -q && echo "# Our app: notes for AI agents" > docs/CLAUDE.md || exit 1
+PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
+check "an adapted docs/CLAUDE.md is left as it was" [ "$(cat docs/CLAUDE.md)" = "# Our app: notes for AI agents" ]
+check "an adapted docs/CLAUDE.md doesn't get the principles beside it" [ ! -e docs/principles.md ]
+check "it says how to rename an adapted copy" grep -qF "git mv docs/CLAUDE.md docs/principles.md" "$work/out"
 
 # Not a git repository yet, and a hooksPath of the project's own
 mkdir -p "$work/p4" && cd "$work/p4" || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
 check "a folder without git still succeeds" [ $? -eq 0 ]
-check "a folder without git still gets the templates" [ -f docs/CLAUDE.md ]
+check "a folder without git still gets the templates" [ -f docs/principles.md ]
 check "it says to set core.hooksPath after git init" grep -q "after git init" "$work/out"
 mkdir -p "$work/p5" && cd "$work/p5" && git init -q && git config core.hooksPath .githooks || exit 1
 PATH="$fakes:$base" "$src/install.sh" project > "$work/out" 2>&1
