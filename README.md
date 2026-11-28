@@ -43,7 +43,7 @@ docs/                              this repository's own plan and decisions, not
 
 Files marked as templates have `<placeholders>` and `<!-- notes -->` to fill in or delete.
 
-A project's `AGENTS.md`, the principles and the project's skills work with any agent tool that reads `AGENTS.md` and `.agents/skills/`, such as Codex, Cursor or OpenCode. The agents, hooks and permissions are Claude Code's for now; another tool gets its own small files once it's really used.
+A project's `AGENTS.md`, the principles and the project's skills work with any agent tool that reads `AGENTS.md` and `.agents/skills/`, such as Codex, Cursor or OpenCode. The git hooks and CI hold for every tool; the agents and the edit hook are Claude Code's for now, and another tool gets its own small files once it's really used.
 
 ## How to use it
 
@@ -85,7 +85,7 @@ Where the notes are private, because `docs/` is git-ignored or a repository of i
 The first four hold for every agent tool, since they check commits and pull requests; the fifth is Claude Code's, and stops a mistake earlier:
 
 1. **`pre-commit`**: no commit on `main`; where the notes are private, no private path and no line that points into them; the scrub list; a warning past 200 changed lines outside tests.
-2. **`commit-msg`**: Conventional Commits, with types and scopes from `CONTRIBUTING.md`; the scrub list; no path into private notes; and a `Protected: <why>` line when the commit changes a path `CODEOWNERS` lists.
+2. **`commit-msg`**: Conventional Commits, with types and scopes from `CONTRIBUTING.md` and a subject of at most 100 characters; no AI credit, where the project refuses it; the scrub list; no path into private notes; and a `Protected: <why>` line when the commit changes a path `CODEOWNERS` lists.
 3. **CI, `checks.yml`**: both hooks again on every commit of a pull request, with the base's copies, so a skipped hook is still caught.
 4. **GitHub**: a ruleset on `main`, set by hand, that requires a pull request and the `checks` status, and blocks force pushes. `.github/CODEOWNERS` is the one list of protected paths.
 5. **Claude Code**: a `PreToolUse` hook on Edit, Write and NotebookEdit that asks before it changes a protected path.
