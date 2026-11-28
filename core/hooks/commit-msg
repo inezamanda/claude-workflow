@@ -1,21 +1,18 @@
 #!/bin/sh
 # Checks a commit message: Conventional Commits (`type(scope): subject`), a subject of at most 100
-# characters (aim for 72) with no full stop, and, where ALLOW_AI_CREDIT is 0, no AI attribution.
+# characters (aim for 72) with no full stop, where ALLOW_AI_CREDIT is 0 no AI attribution, no word from the scrub
+# list, and, where the notes are private, no path into docs/.
 # The types and scopes are the names in backticks on the "- **Types:**" and "- **Scopes:**" lines of the root
 # CONTRIBUTING.md, as it is staged, so a commit can add a scope and use it. With no scopes listed, any passes.
-# Copy it into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
+# Copy it, checks.sh and scrub.sh into the project's hooks folder and run once per clone: git config core.hooksPath <folder>
 
 # 0 refuses a message that credits an AI (a Co-Authored-By trailer or a "Generated with" line). Match CONTRIBUTING.md.
 ALLOW_AI_CREDIT=1
+. "$(dirname "$0")/checks.sh"
 
 # Below the scissors line that `git commit -v` adds is the diff, not the message.
 msg="$(sed '/^# -* >8 -*$/,$d' "$1")"
 subject="$(printf '%s\n' "$msg" | git stripspace --strip-comments | head -n 1)"
-fail=0
-refuse() {
-    echo "commit-msg: $1" >&2
-    fail=1
-}
 
 # names <label>: the names in backticks on CONTRIBUTING.md's "- **<label>:**" line, HTML comments dropped.
 names() {
@@ -63,5 +60,13 @@ if [ "$ALLOW_AI_CREDIT" = 0 ]; then
         refuse "a Co-Authored-By line names an AI; this project's commits carry no AI attribution"
     printf '%s\n' "$msg" | grep -iq 'generated with' &&
         refuse "no \"Generated with\" lines; this project's commits carry no AI attribution"
+fi
+printf '%s\n' "$msg" | scrub "the commit message" || fail=1
+
+# Without comments here: the editor's status lines name the files, deleted ones included.
+if notes_private; then
+    links="$(printf '%s\n' "$msg" | git stripspace --strip-comments | notes_links)"
+    [ -n "$links" ] && refuse "the notes are private here, so the message may not point into docs/:
+$links"
 fi
 exit $fail

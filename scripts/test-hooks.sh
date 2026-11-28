@@ -85,13 +85,110 @@ message 'feat: x\n';                                    expect -m 'Types:' refus
 nofile="$work/nofile" && fixture "$nofile" && git -C "$nofile" rm -q --cached CONTRIBUTING.md || exit 1
 message 'feat: x\n';                                    expect -m 'no CONTRIBUTING.md' refuse "types: no CONTRIBUTING.md" commit_msg "$nofile"
 
-# The same hook with AI credit refused
-sed 's/^ALLOW_AI_CREDIT=1$/ALLOW_AI_CREDIT=0/' "$hook" > "$work/commit-msg-refused" && chmod +x "$work/commit-msg-refused"
-refused="$work/commit-msg-refused"
+# The same hook with AI credit refused, beside the files it sources
+mkdir -p "$work/refused" && cp "$root/core/hooks/checks.sh" "$root/core/hooks/scrub.sh" "$work/refused/" &&
+    sed 's/^ALLOW_AI_CREDIT=1$/ALLOW_AI_CREDIT=0/' "$hook" > "$work/refused/commit-msg" || exit 1
+refused="$work/refused/commit-msg"
 grep -q '^ALLOW_AI_CREDIT=0$' "$refused" || { echo "FAIL  could not switch AI credit off"; exit 1; }
 message 'fix: x\n\nCo-Authored-By: Claude <a@b.c>\n';   expect refuse "refused: AI co-author" commit_msg "$cm" "$refused"
 message 'fix: x\n\n# Generated with a tool\n';          expect refuse "refused: tool credit in a # line" commit_msg "$cm" "$refused"
 message 'fix: x\n\nCo-Authored-By: Sam <a@b.c>\n';      expect pass   "refused: human co-author still passes" commit_msg "$cm" "$refused"
+
+# core/hooks/pre-commit. Repositories are set up with commits made without hooks.
+pre="$root/core/hooks/pre-commit"
+pre_commit() { (cd "$1" && ${SH:-sh} "$pre"); }
+# restore <repository>: the index and the tracked files back to HEAD; untracked files stay.
+restore() { git -C "$1" reset -q && git -C "$1" checkout -q -- . || exit 1; }
+
+m="$work/main" && fixture "$m" && git -C "$m" symbolic-ref HEAD refs/heads/main || exit 1
+expect pass "main: first commit passes" pre_commit "$m"
+git -C "$m" commit -qm init && echo x > "$m/a.txt" && git -C "$m" add a.txt || exit 1
+expect -m '^pre-commit: .*main' refuse "main: refused" pre_commit "$m"
+git -C "$m" checkout -q -b topic && expect pass "main: a branch passes" pre_commit "$m"
+git -C "$m" checkout -q --detach && expect pass "main: detached HEAD passes" pre_commit "$m"
+
+# Notes private through the working tree's .gitignore alone, since it isn't committed
+pw="$work/pw" && fixture "$pw" && git -C "$pw" commit -qm init && printf '/docs/\n' > "$pw/.gitignore" &&
+    mkdir "$pw/docs" && echo x > "$pw/docs/x.md" && echo y > "$pw/docs/y.md" && git -C "$pw" add -f docs/x.md || exit 1
+expect -m 'docs/x.md' refuse "private: forced docs/ file" pre_commit "$pw"
+git -C "$pw" reset -q && git -C "$pw" add -f docs/y.md && git -C "$pw" commit -qm y && git -C "$pw" add -f docs/x.md || exit 1
+expect -m 'docs/x.md' refuse "private: docs/ with a tracked file" pre_commit "$pw"
+
+# Notes private through HEAD's .gitignore
+ph="$work/ph" && fixture "$ph" && printf '/docs/\n' > "$ph/.gitignore" && git -C "$ph" add .gitignore &&
+    git -C "$ph" commit -qm init && mkdir "$ph/docs" && echo x > "$ph/docs/x.md" || exit 1
+: > "$ph/.gitignore" && git -C "$ph" add .gitignore docs/x.md || exit 1
+expect -m 'docs/x.md' refuse "private: .gitignore unignores docs/ in the same commit" pre_commit "$ph"
+restore "$ph" && : > "$ph/.gitignore" && git -C "$ph" add docs/x.md || exit 1
+expect -m 'docs/x.md' refuse "private: .gitignore emptied, unstaged" pre_commit "$ph"
+restore "$ph" && echo a > "$ph/AGENTS.md" && git -C "$ph" add AGENTS.md || exit 1
+expect -m 'AGENTS.md' refuse "private: AGENTS.md" pre_commit "$ph"
+restore "$ph" && echo a > "$ph/CLAUDE.md" && git -C "$ph" add CLAUDE.md || exit 1
+expect -m 'CLAUDE.md' refuse "private: CLAUDE.md" pre_commit "$ph"
+restore "$ph" && mkdir -p "$ph/sub" && echo a > "$ph/sub/AGENTS.md" && git -C "$ph" add sub/AGENTS.md || exit 1
+expect pass "private: nested AGENTS.md passes" pre_commit "$ph"
+restore "$ph" && git -C "$ph" add AGENTS.md && git -C "$ph" commit -qm a && git -C "$ph" rm -q --cached AGENTS.md || exit 1
+expect pass "private: untracking AGENTS.md passes" pre_commit "$ph"
+restore "$ph" && git -C "$ph" add -f docs/x.md && git -C "$ph" commit -qm x && git -C "$ph" rm -q --cached docs/x.md || exit 1
+expect pass "private: removing a docs/ file passes" pre_commit "$ph"
+# line <file> <text>: the file staged with one line, from HEAD's state
+line() { restore "$ph" && mkdir -p "$ph/$(dirname "$1")" && printf '%s\n' "$2" > "$ph/$1" && git -C "$ph" add "$1" || exit 1; }
+line a.md 'see docs/plan.md';                           expect -m 'see docs/plan.md' refuse "private: line names docs/" pre_commit "$ph"
+line a.md '[plan](../docs/plan.md)';                    expect refuse "private: ../docs/ link" pre_commit "$ph"
+line a.md 'kept in sub/docs/ instead';                  expect pass   "private: sub/docs/ passes" pre_commit "$ph"
+line .gitignore "$(printf '/docs/\ndocs/')";            expect pass   "private: .gitignore may" pre_commit "$ph"
+line a.md 'see https://example.com/docs/a';             expect pass   "private: URL passes" pre_commit "$ph"
+line a.md 'see https://example.com/docs/a and docs/b';  expect refuse "private: URL doesn't exempt the line" pre_commit "$ph"
+line a.md 'see docs/plan.md' && printf '* -diff\n' > "$ph/.gitattributes" && git -C "$ph" add .gitattributes || exit 1
+expect refuse "private: -diff doesn't hide lines" pre_commit "$ph"
+# The space puts docs/ at a word start in the +++ header, the one place a header could name it.
+rm "$ph/.gitattributes" && line 'sub/old docs/a.md' 'x'; expect pass  "private: diff headers aren't lines" pre_commit "$ph"
+restore "$ph"
+message 'docs: plan\n\nsee docs/plan.md\n';             expect -m 'docs/plan.md' refuse "private: message names docs/" commit_msg "$ph"
+message 'chore: untrack the notes\n\n# Changes to be committed:\n#\tdeleted:    docs/x.md\n'
+expect pass "private: untracking a docs/ file through the editor passes" commit_msg "$ph"
+
+# docs/ a repository of its own, staged as a gitlink; a docs symlink beside HEAD's /docs/ line
+pg="$work/pg" && fixture "$pg" && git -C "$pg" commit -qm init && git init -q "$pg/docs" &&
+    git -C "$pg/docs" commit -q --allow-empty -m notes && git -C "$pg" add docs 2>/dev/null || exit 1
+expect -m 'docs' refuse "private: docs/ gitlink" pre_commit "$pg"
+ps="$work/ps" && fixture "$ps" && printf '/docs/\n' > "$ps/.gitignore" && git -C "$ps" add .gitignore &&
+    git -C "$ps" commit -qm init && mkdir "$ps/real" && ln -s real "$ps/docs" && git -C "$ps" add docs || exit 1
+expect -m 'docs' refuse "private: docs symlink" pre_commit "$ps"
+pf="$work/pf" && fixture "$pf" && git init -q "$pf/docs" && git -C "$pf/docs" commit -q --allow-empty -m notes &&
+    git -C "$pf" add -A 2>/dev/null || exit 1
+expect -m 'docs' refuse "private: first commit with the docs gitlink" pre_commit "$pf"
+
+# Notes public: no ignored docs/, no docs repository
+pp="$work/pp" && fixture "$pp" && git -C "$pp" commit -qm init && mkdir "$pp/docs" && echo x > "$pp/docs/x.md" &&
+    echo a > "$pp/AGENTS.md" && git -C "$pp" add docs/x.md || exit 1
+expect pass "public: docs/ file passes" pre_commit "$pp"
+git -C "$pp" reset -q && git -C "$pp" add AGENTS.md && expect pass "public: AGENTS.md passes" pre_commit "$pp"
+
+# Size: a warning past 200 lines added and removed outside tests
+big='lines changed outside tests'
+sz="$work/sz" && fixture "$sz" && seq 300 > "$sz/big.txt" && git -C "$sz" add big.txt && git -C "$sz" commit -qm init || exit 1
+# lines <count> <file>: the file staged with that many lines, from HEAD's state
+lines() { git -C "$sz" reset -q --hard && mkdir -p "$sz/$(dirname "$2")" && seq "$1" > "$sz/$2" && git -C "$sz" add "$2" || exit 1; }
+lines 201 a.txt;                                        expect -m "$big" pass "size: warns past 200" pre_commit "$sz"
+lines 200 a.txt;                                        expect -n "$big" pass "size: 200 doesn't warn" pre_commit "$sz"
+lines 300 tests/a.txt;                                  expect -n "$big" pass "size: tests don't count" pre_commit "$sz"
+git -C "$sz" reset -q --hard && head -c 4000 /dev/zero > "$sz/bin" && git -C "$sz" add bin || exit 1
+expect -n "$big" pass "size: binary counts nothing" pre_commit "$sz"
+git -C "$sz" reset -q --hard && git -C "$sz" mv big.txt moved.txt || exit 1
+expect -n "$big" pass "size: a move counts nothing" pre_commit "$sz"
+git -C "$sz" reset -q --hard && git -C "$sz" checkout -q -b other && echo other > "$sz/c.txt" && seq 300 > "$sz/d.txt" &&
+    git -C "$sz" add c.txt d.txt && git -C "$sz" commit -qm other && git -C "$sz" checkout -q feat &&
+    echo mine > "$sz/c.txt" && git -C "$sz" add c.txt && git -C "$sz" commit -qm mine || exit 1
+! git -C "$sz" merge -q other >/dev/null 2>&1 && echo both > "$sz/c.txt" && git -C "$sz" add c.txt || exit 1
+expect -n "$big" pass "size: merge skipped" pre_commit "$sz"
+
+# The scrub list, through the core hooks
+message 'chore: for Secretname\n';                      expect -m '^scrub: ' refuse "scrub: core commit-msg reads the message" commit_msg "$cm"
+sc="$work/sc" && fixture "$sc" && echo 'for Secretname' > "$sc/b.txt" && git -C "$sc" add b.txt || exit 1
+expect -m '^scrub: ' refuse "scrub: core pre-commit reads the staged lines" pre_commit "$sc"
+git -C "$sc" rm -q --cached b.txt && echo x > "$sc/Secretname.txt" && git -C "$sc" add Secretname.txt || exit 1
+expect -m '^scrub: ' refuse "scrub: core pre-commit reads file names" pre_commit "$sc"
 
 # scripts/hooks (the scrub check), in a throwaway repository with its own word list.
 # The refusals must be scrub.sh's own, so a hook that can't find it fails them.
